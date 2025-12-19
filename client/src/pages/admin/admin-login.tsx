@@ -1,33 +1,66 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useMutation } from "@tanstack/react-query";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { GraduationCap, Lock, Mail } from "lucide-react";
+import { Lock, Mail } from "lucide-react";
 import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+const adminLoginSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+type AdminLoginInput = z.infer<typeof adminLoginSchema>;
 
 export default function AdminLoginPage() {
   const [, setLocation] = useLocation();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+  const [form, setForm] = useState<AdminLoginInput>({ email: "", password: "" });
+  const [errors, setErrors] = useState<Partial<Record<keyof AdminLoginInput, string>>>({});
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const loginMutation = useMutation({
+    mutationFn: async (data: AdminLoginInput) => {
+      const res = await apiRequest("POST", "/api/admin/login", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Logged in as admin",
+        description: "Redirecting to admin dashboard...",
+      });
+      setLocation("/admin/dashboard");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Admin login failed",
+        description: error.message || "Invalid admin credentials",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setLoading(true);
+    setErrors({});
 
-    // Simulate admin login
-    setTimeout(() => {
-      if (email === "admin@findtern.com" && password === "admin123") {
-        setLocation("/admin/dashboard");
-      } else {
-        setError("Invalid admin credentials");
+    const parsed = adminLoginSchema.safeParse(form);
+    if (!parsed.success) {
+      const fieldErrors: Partial<Record<keyof AdminLoginInput, string>> = {};
+      for (const issue of parsed.error.issues) {
+        const path = issue.path[0] as keyof AdminLoginInput;
+        fieldErrors[path] = issue.message;
       }
-      setLoading(false);
-    }, 1000);
+      setErrors(fieldErrors);
+      return;
+    }
+
+    loginMutation.mutate(parsed.data);
   };
 
   return (
@@ -52,12 +85,15 @@ export default function AdminLoginPage() {
                 id="email"
                 type="email"
                 placeholder="admin@findtern.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={form.email}
+                onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
                 className="pl-10 h-11"
                 required
               />
             </div>
+            {errors.email && (
+              <p className="text-xs text-destructive mt-1">{errors.email}</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -68,27 +104,24 @@ export default function AdminLoginPage() {
                 id="password"
                 type="password"
                 placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={form.password}
+                onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
                 className="pl-10 h-11"
                 required
               />
             </div>
+            {errors.password && (
+              <p className="text-xs text-destructive mt-1">{errors.password}</p>
+            )}
           </div>
-
-          {error && (
-            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
-              {error}
-            </div>
-          )}
 
           <Button
             type="submit"
             className="w-full h-11"
             style={{ backgroundColor: '#0E6049' }}
-            disabled={loading}
+            disabled={loginMutation.isPending}
           >
-            {loading ? "Signing in..." : "Sign In"}
+            {loginMutation.isPending ? "Signing in..." : "Sign In"}
           </Button>
         </form>
 

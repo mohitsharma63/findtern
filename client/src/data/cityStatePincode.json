@@ -1,0 +1,978 @@
+{
+  "mumbai": {
+    "state": "maharashtra",
+    "pincodes": ["400001", "400002", "400003", "400004", "400005", "400006", "400007", "400008", "400009", "400010"]
+  },
+  "delhi": {
+    "state": "delhi",
+    "pincodes": ["110001", "110002", "110003", "110004", "110005", "110006", "110007", "110008", "110009", "110010"]
+  },
+  "bangalore": {
+    "state": "karnataka",
+    "pincodes": ["560001", "560002", "560003", "560004", "560005", "560006", "560007", "560008", "560009", "560010"]
+  },
+  "hyderabad": {
+    "state": "telangana",
+    "pincodes": ["500001", "500002", "500003", "500004", "500005", "500006", "500007", "500008", "500009", "500010"]
+  },
+  "ahmedabad": {
+    "state": "gujarat",
+    "pincodes": ["380001", "380002", "380003", "380004", "380005", "380006", "380007", "380008", "380009", "380010"]
+  },
+  "chennai": {
+    "state": "tamil_nadu",
+    "pincodes": ["600001", "600002", "600003", "600004", "600005", "600006", "600007", "600008", "600009", "600010"]
+  },
+  "kolkata": {
+    "state": "west_bengal",
+    "pincodes": ["700001", "700002", "700003", "700004", "700005", "700006", "700007", "700008", "700009", "700010"]
+  },
+  "pune": {
+    "state": "maharashtra",
+    "pincodes": ["411001", "411002", "411003", "411004", "411005", "411006", "411007", "411008", "411009", "411010"]
+  },
+  "jaipur": {
+    "state": "rajasthan",
+    "pincodes": ["302001", "302002", "302003", "302004", "302005", "302006", "302007", "302008", "302009", "302010"]
+  },
+  "surat": {
+    "state": "gujarat",
+    "pincodes": ["395001", "395002", "395003", "395004", "395005", "395006", "395007", "395008", "395009", "395010"]
+  },
+  "lucknow": {
+    "state": "uttar_pradesh",
+    "pincodes": ["226001", "226002", "226003", "226004", "226005"]
+  },
+  "kanpur": {
+    "state": "uttar_pradesh",
+    "pincodes": ["208001", "208002", "208003", "208004", "208005"]
+  },
+  "nagpur": {
+    "state": "maharashtra",
+    "pincodes": ["440001", "440002", "440003", "440004", "440005"]
+  },
+  "indore": {
+    "state": "madhya_pradesh",
+    "pincodes": ["452001", "452002", "452003", "452004", "452005"]
+  },
+  "thane": {
+    "state": "maharashtra",
+    "pincodes": ["400601", "400602", "400603", "400604", "400605"]
+  },
+  "bhopal": {
+    "state": "madhya_pradesh",
+    "pincodes": ["462001", "462002", "462003", "462004", "462005"]
+  },
+  "visakhapatnam": {
+    "state": "andhra_pradesh",
+    "pincodes": ["530001", "530002", "530003", "530004", "530005"]
+  },
+  "pimpri": {
+    "state": "maharashtra",
+    "pincodes": ["411017", "411018", "411019", "411020", "411021"]
+  },
+  "patna": {
+    "state": "bihar",
+    "pincodes": ["800001", "800002", "800003", "800004", "800005"]
+  },
+  "vadodara": {
+    "state": "gujarat",
+    "pincodes": ["390001", "390002", "390003", "390004", "390005"]
+  },
+  "ghaziabad": {
+    "state": "uttar_pradesh",
+    "pincodes": ["201001"]
+  },
+  "ludhiana": {
+    "state": "punjab",
+    "pincodes": ["141001"]
+  },
+  "agra": {
+    "state": "uttar_pradesh",
+    "pincodes": ["282001"]
+  },
+  "nashik": {
+    "state": "maharashtra",
+    "pincodes": ["422001"]
+  },
+  "faridabad": {
+    "state": "haryana",
+    "pincodes": ["121001"]
+  },
+  "meerut": {
+    "state": "uttar_pradesh",
+    "pincodes": ["250001"]
+  },
+  "rajkot": {
+    "state": "gujarat",
+    "pincodes": ["360001"]
+  },
+  "kalyan": {
+    "state": "maharashtra",
+    "pincodes": ["421301"]
+  },
+  "vasai": {
+    "state": "maharashtra",
+    "pincodes": ["401201"]
+  },
+  "varanasi": {
+    "state": "uttar_pradesh",
+    "pincodes": ["221001"]
+  },
+  "srinagar": {
+    "state": "jammu_and_kashmir",
+    "pincodes": ["190001"]
+  },
+  "aurangabad": {
+    "state": "maharashtra",
+    "pincodes": ["431001"]
+  },
+  "dhanbad": {
+    "state": "jharkhand",
+    "pincodes": ["826001"]
+  },
+  "amritsar": {
+    "state": "punjab",
+    "pincodes": ["143001"]
+  },
+  "navi_mumbai": {
+    "state": "maharashtra",
+    "pincodes": ["400614"]
+  },
+  "allahabad": {
+    "state": "uttar_pradesh",
+    "pincodes": ["211001"]
+  },
+  "ranchi": {
+    "state": "jharkhand",
+    "pincodes": ["834001"]
+  },
+  "howrah": {
+    "state": "west_bengal",
+    "pincodes": ["711101"]
+  },
+  "coimbatore": {
+    "state": "tamil_nadu",
+    "pincodes": ["641001"]
+  },
+  "jabalpur": {
+    "state": "madhya_pradesh",
+    "pincodes": ["482001"]
+  },
+  "gwalior": {
+    "state": "madhya_pradesh",
+    "pincodes": ["474001"]
+  },
+  "vijayawada": {
+    "state": "andhra_pradesh",
+    "pincodes": ["520001"]
+  },
+  "jodhpur": {
+    "state": "rajasthan",
+    "pincodes": ["342001"]
+  },
+  "madurai": {
+    "state": "tamil_nadu",
+    "pincodes": ["625001"]
+  },
+  "raipur": {
+    "state": "chhattisgarh",
+    "pincodes": ["492001"]
+  },
+  "kota": {
+    "state": "rajasthan",
+    "pincodes": ["324001"]
+  },
+  "guwahati": {
+    "state": "assam",
+    "pincodes": ["781001"]
+  },
+  "chandigarh": {
+    "state": "chandigarh",
+    "pincodes": ["160001"]
+  },
+  "solapur": {
+    "state": "maharashtra",
+    "pincodes": ["413001"]
+  },
+  "hubli": {
+    "state": "karnataka",
+    "pincodes": ["580020"]
+  },
+  "mysore": {
+    "state": "karnataka",
+    "pincodes": ["570001"]
+  },
+  "tiruchirappalli": {
+    "state": "tamil_nadu",
+    "pincodes": ["620001"]
+  },
+  "bareilly": {
+    "state": "uttar_pradesh",
+    "pincodes": ["243001"]
+  },
+  "aligarh": {
+    "state": "uttar_pradesh",
+    "pincodes": ["202001"]
+  },
+  "tiruppur": {
+    "state": "tamil_nadu",
+    "pincodes": ["641601"]
+  },
+  "moradabad": {
+    "state": "uttar_pradesh",
+    "pincodes": ["244001"]
+  },
+  "mysuru": {
+    "state": "karnataka",
+    "pincodes": ["570001"]
+  },
+  "bhiwandi": {
+    "state": "maharashtra",
+    "pincodes": ["421302"]
+  },
+  "saharanpur": {
+    "state": "uttar_pradesh",
+    "pincodes": ["247001"]
+  },
+  "gorakhpur": {
+    "state": "uttar_pradesh",
+    "pincodes": ["273001"]
+  },
+  "guntur": {
+    "state": "andhra_pradesh",
+    "pincodes": ["522001"]
+  },
+  "bikaner": {
+    "state": "rajasthan",
+    "pincodes": ["334001"]
+  },
+  "amravati": {
+    "state": "maharashtra",
+    "pincodes": ["444601"]
+  },
+  "noida": {
+    "state": "uttar_pradesh",
+    "pincodes": ["201301"]
+  },
+  "jamshedpur": {
+    "state": "jharkhand",
+    "pincodes": ["831001"]
+  },
+  "bhilai": {
+    "state": "chhattisgarh",
+    "pincodes": ["490001"]
+  },
+  "cuttack": {
+    "state": "odisha",
+    "pincodes": ["753001"]
+  },
+  "firozabad": {
+    "state": "uttar_pradesh",
+    "pincodes": ["283203"]
+  },
+  "kochi": {
+    "state": "kerala",
+    "pincodes": ["682001"]
+  },
+  "nellore": {
+    "state": "andhra_pradesh",
+    "pincodes": ["524001"]
+  },
+  "bhavnagar": {
+    "state": "gujarat",
+    "pincodes": ["364001"]
+  },
+  "dehradun": {
+    "state": "uttarakhand",
+    "pincodes": ["248001"]
+  },
+  "durgapur": {
+    "state": "west_bengal",
+    "pincodes": ["713201"]
+  },
+  "asansol": {
+    "state": "west_bengal",
+    "pincodes": ["713301"]
+  },
+  "rourkela": {
+    "state": "odisha",
+    "pincodes": ["769001"]
+  },
+  "nanded": {
+    "state": "maharashtra",
+    "pincodes": ["431601"]
+  },
+  "kolhapur": {
+    "state": "maharashtra",
+    "pincodes": ["416001"]
+  },
+  "ajmer": {
+    "state": "rajasthan",
+    "pincodes": ["305001"]
+  },
+  "akola": {
+    "state": "maharashtra",
+    "pincodes": ["444001"]
+  },
+  "gulbarga": {
+    "state": "karnataka",
+    "pincodes": ["585101"]
+  },
+  "jamnagar": {
+    "state": "gujarat",
+    "pincodes": ["361001"]
+  },
+  "ujjain": {
+    "state": "madhya_pradesh",
+    "pincodes": ["456001"]
+  },
+  "loni": {
+    "state": "uttar_pradesh",
+    "pincodes": ["201102"]
+  },
+  "siliguri": {
+    "state": "west_bengal",
+    "pincodes": ["734001"]
+  },
+  "jhansi": {
+    "state": "uttar_pradesh",
+    "pincodes": ["284001"]
+  },
+  "ulhasnagar": {
+    "state": "maharashtra",
+    "pincodes": ["421001"]
+  },
+  "jammu": {
+    "state": "jammu_and_kashmir",
+    "pincodes": ["180001"]
+  },
+  "sangli": {
+    "state": "maharashtra",
+    "pincodes": ["416416"]
+  },
+  "mangalore": {
+    "state": "karnataka",
+    "pincodes": ["575001"]
+  },
+  "erode": {
+    "state": "tamil_nadu",
+    "pincodes": ["638001"]
+  },
+  "belgaum": {
+    "state": "karnataka",
+    "pincodes": ["590001"]
+  },
+  "ambattur": {
+    "state": "tamil_nadu",
+    "pincodes": ["600053"]
+  },
+  "tirunelveli": {
+    "state": "tamil_nadu",
+    "pincodes": ["627001"]
+  },
+  "malegaon": {
+    "state": "maharashtra",
+    "pincodes": ["423203"]
+  },
+  "gaya": {
+    "state": "bihar",
+    "pincodes": ["823001"]
+  },
+  "jalgaon": {
+    "state": "maharashtra",
+    "pincodes": ["425001"]
+  },
+  "udaipur": {
+    "state": "rajasthan",
+    "pincodes": ["313001"]
+  },
+  "maheshtala": {
+    "state": "west_bengal",
+    "pincodes": ["700141"]
+  },
+  "davanagere": {
+    "state": "karnataka",
+    "pincodes": ["577001"]
+  },
+  "kozhikode": {
+    "state": "kerala",
+    "pincodes": ["673001"]
+  },
+  "kurnool": {
+    "state": "andhra_pradesh",
+    "pincodes": ["518001"]
+  },
+  "rajpur_sonarpur": {
+    "state": "west_bengal",
+    "pincodes": ["700149"]
+  },
+  "rajahmundry": {
+    "state": "andhra_pradesh",
+    "pincodes": ["533101"]
+  },
+  "bokaro_steel_city": {
+    "state": "jharkhand",
+    "pincodes": ["827001"]
+  },
+  "south_dumdum": {
+    "state": "west_bengal",
+    "pincodes": ["700074"]
+  },
+  "bellary": {
+    "state": "karnataka",
+    "pincodes": ["583101"]
+  },
+  "patiala": {
+    "state": "punjab",
+    "pincodes": ["147001"]
+  },
+  "gopalpur": {
+    "state": "west_bengal",
+    "pincodes": ["743273"]
+  },
+  "agartala": {
+    "state": "tripura",
+    "pincodes": ["799001"]
+  },
+  "bhagalpur": {
+    "state": "bihar",
+    "pincodes": ["812001"]
+  },
+  "muzaffarnagar": {
+    "state": "uttar_pradesh",
+    "pincodes": ["251001"]
+  },
+  "bhatpara": {
+    "state": "west_bengal",
+    "pincodes": ["743123"]
+  },
+  "panihati": {
+    "state": "west_bengal",
+    "pincodes": ["700110"]
+  },
+  "latur": {
+    "state": "maharashtra",
+    "pincodes": ["413512"]
+  },
+  "dhule": {
+    "state": "maharashtra",
+    "pincodes": ["424001"]
+  },
+  "tirupati": {
+    "state": "andhra_pradesh",
+    "pincodes": ["517501"]
+  },
+  "rohtak": {
+    "state": "haryana",
+    "pincodes": ["132001"]
+  },
+  "korba": {
+    "state": "chhattisgarh",
+    "pincodes": ["495677"]
+  },
+  "bhilwara": {
+    "state": "rajasthan",
+    "pincodes": ["311001"]
+  },
+  "berhampur": {
+    "state": "odisha",
+    "pincodes": ["760001"]
+  },
+  "muzaffarpur": {
+    "state": "bihar",
+    "pincodes": ["846001"]
+  },
+  "ahmednagar": {
+    "state": "maharashtra",
+    "pincodes": ["414001"]
+  },
+  "mathura": {
+    "state": "uttar_pradesh",
+    "pincodes": ["281001"]
+  },
+  "kollam": {
+    "state": "kerala",
+    "pincodes": ["691001"]
+  },
+  "avadi": {
+    "state": "tamil_nadu",
+    "pincodes": ["600054"]
+  },
+  "kadapa": {
+    "state": "andhra_pradesh",
+    "pincodes": ["516001"]
+  },
+  "kamarhati": {
+    "state": "west_bengal",
+    "pincodes": ["700058"]
+  },
+  "sambalpur": {
+    "state": "odisha",
+    "pincodes": ["768001"]
+  },
+  "bilaspur": {
+    "state": "chhattisgarh",
+    "pincodes": ["495001"]
+  },
+  "shahjahanpur": {
+    "state": "uttar_pradesh",
+    "pincodes": ["242001"]
+  },
+  "satara": {
+    "state": "maharashtra",
+    "pincodes": ["415001"]
+  },
+  "bijapur": {
+    "state": "karnataka",
+    "pincodes": ["586101"]
+  },
+  "rampur": {
+    "state": "uttar_pradesh",
+    "pincodes": ["244901"]
+  },
+  "shivamogga": {
+    "state": "karnataka",
+    "pincodes": ["577201"]
+  },
+  "chandrapur": {
+    "state": "maharashtra",
+    "pincodes": ["442401"]
+  },
+  "junagadh": {
+    "state": "gujarat",
+    "pincodes": ["362001"]
+  },
+  "thrissur": {
+    "state": "kerala",
+    "pincodes": ["680001"]
+  },
+  "alwar": {
+    "state": "rajasthan",
+    "pincodes": ["301001"]
+  },
+  "bardhaman": {
+    "state": "west_bengal",
+    "pincodes": ["713101"]
+  },
+  "kulti": {
+    "state": "west_bengal",
+    "pincodes": ["713343"]
+  },
+  "kakinada": {
+    "state": "andhra_pradesh",
+    "pincodes": ["533001"]
+  },
+  "nizamabad": {
+    "state": "telangana",
+    "pincodes": ["503001"]
+  },
+  "parbhani": {
+    "state": "maharashtra",
+    "pincodes": ["431401"]
+  },
+  "tumkur": {
+    "state": "karnataka",
+    "pincodes": ["572101"]
+  },
+  "khammam": {
+    "state": "telangana",
+    "pincodes": ["507001"]
+  },
+  "ozhukarai": {
+    "state": "puducherry",
+    "pincodes": ["605013"]
+  },
+  "bihar_sharif": {
+    "state": "bihar",
+    "pincodes": ["803101"]
+  },
+  "panipat": {
+    "state": "haryana",
+    "pincodes": ["132103"]
+  },
+  "darbhanga": {
+    "state": "bihar",
+    "pincodes": ["846004"]
+  },
+  "bally": {
+    "state": "west_bengal",
+    "pincodes": ["711201"]
+  },
+  "aizawl": {
+    "state": "mizoram",
+    "pincodes": ["796001"]
+  },
+  "dewas": {
+    "state": "madhya_pradesh",
+    "pincodes": ["455001"]
+  },
+  "ichalkaranji": {
+    "state": "maharashtra",
+    "pincodes": ["416115"]
+  },
+  "karnal": {
+    "state": "haryana",
+    "pincodes": ["132001"]
+  },
+  "bathinda": {
+    "state": "punjab",
+    "pincodes": ["151001"]
+  },
+  "jalna": {
+    "state": "maharashtra",
+    "pincodes": ["431203"]
+  },
+  "eluru": {
+    "state": "andhra_pradesh",
+    "pincodes": ["534001"]
+  },
+  "kirari_suleman_nagar": {
+    "state": "delhi",
+    "pincodes": ["110086"]
+  },
+  "barasat": {
+    "state": "west_bengal",
+    "pincodes": ["700124"]
+  },
+  "purnia": {
+    "state": "bihar",
+    "pincodes": ["854301"]
+  },
+  "satna": {
+    "state": "madhya_pradesh",
+    "pincodes": ["485001"]
+  },
+  "mau": {
+    "state": "uttar_pradesh",
+    "pincodes": ["275101"]
+  },
+  "sonipat": {
+    "state": "haryana",
+    "pincodes": ["131001"]
+  },
+  "farrukhabad": {
+    "state": "uttar_pradesh",
+    "pincodes": ["209625"]
+  },
+  "sagar": {
+    "state": "madhya_pradesh",
+    "pincodes": ["470001"]
+  },
+  "durg": {
+    "state": "chhattisgarh",
+    "pincodes": ["491001"]
+  },
+  "imphal": {
+    "state": "manipur",
+    "pincodes": ["795001"]
+  },
+  "ratlam": {
+    "state": "madhya_pradesh",
+    "pincodes": ["457001"]
+  },
+  "hapur": {
+    "state": "uttar_pradesh",
+    "pincodes": ["245101"]
+  },
+  "arrah": {
+    "state": "bihar",
+    "pincodes": ["802301"]
+  },
+  "karimnagar": {
+    "state": "telangana",
+    "pincodes": ["505001"]
+  },
+  "anantapur": {
+    "state": "andhra_pradesh",
+    "pincodes": ["515001"]
+  },
+  "etawah": {
+    "state": "uttar_pradesh",
+    "pincodes": ["206001"]
+  },
+  "ambernath": {
+    "state": "maharashtra",
+    "pincodes": ["421501"]
+  },
+  "north_dumdum": {
+    "state": "west_bengal",
+    "pincodes": ["700074"]
+  },
+  "bharatpur": {
+    "state": "rajasthan",
+    "pincodes": ["321001"]
+  },
+  "begusarai": {
+    "state": "bihar",
+    "pincodes": ["851101"]
+  },
+  "new_delhi": {
+    "state": "delhi",
+    "pincodes": ["110001"]
+  },
+  "gandhidham": {
+    "state": "gujarat",
+    "pincodes": ["370201"]
+  },
+  "baranagar": {
+    "state": "west_bengal",
+    "pincodes": ["700036"]
+  },
+  "tiruvottiyur": {
+    "state": "tamil_nadu",
+    "pincodes": ["600019"]
+  },
+  "puducherry": {
+    "state": "puducherry",
+    "pincodes": ["605001"]
+  },
+  "sikar": {
+    "state": "rajasthan",
+    "pincodes": ["332001"]
+  },
+  "thoothukudi": {
+    "state": "tamil_nadu",
+    "pincodes": ["628001"]
+  },
+  "rewa": {
+    "state": "madhya_pradesh",
+    "pincodes": ["486001"]
+  },
+  "mirzapur": {
+    "state": "uttar_pradesh",
+    "pincodes": ["231001"]
+  },
+  "raichur": {
+    "state": "karnataka",
+    "pincodes": ["584101"]
+  },
+  "pali": {
+    "state": "rajasthan",
+    "pincodes": ["306401"]
+  },
+  "ramagundam": {
+    "state": "telangana",
+    "pincodes": ["505208"]
+  },
+  "haridwar": {
+    "state": "uttarakhand",
+    "pincodes": ["249401"]
+  },
+  "vijayanagaram": {
+    "state": "andhra_pradesh",
+    "pincodes": ["535001"]
+  },
+  "katihar": {
+    "state": "bihar",
+    "pincodes": ["854105"]
+  },
+  "naihati": {
+    "state": "west_bengal",
+    "pincodes": ["743165"]
+  },
+  "sambhal": {
+    "state": "uttar_pradesh",
+    "pincodes": ["244302"]
+  },
+  "nadiad": {
+    "state": "gujarat",
+    "pincodes": ["387001"]
+  },
+  "yamunanagar": {
+    "state": "haryana",
+    "pincodes": ["135001"]
+  },
+  "english_bazar": {
+    "state": "west_bengal",
+    "pincodes": ["732101"]
+  },
+  "unnao": {
+    "state": "uttar_pradesh",
+    "pincodes": ["209801"]
+  },
+  "morena": {
+    "state": "madhya_pradesh",
+    "pincodes": ["476001"]
+  },
+  "bhiwani": {
+    "state": "haryana",
+    "pincodes": ["127021"]
+  },
+  "purnea": {
+    "state": "bihar",
+    "pincodes": ["854301"]
+  },
+  "kharagpur": {
+    "state": "west_bengal",
+    "pincodes": ["721301"]
+  },
+  "dindigul": {
+    "state": "tamil_nadu",
+    "pincodes": ["624001"]
+  },
+  "gandhinagar": {
+    "state": "gujarat",
+    "pincodes": ["382010"]
+  },
+  "hospet": {
+    "state": "karnataka",
+    "pincodes": ["583201"]
+  },
+  "nangloi_jat": {
+    "state": "delhi",
+    "pincodes": ["110041"]
+  },
+  "malda": {
+    "state": "west_bengal",
+    "pincodes": ["732101"]
+  },
+  "ongole": {
+    "state": "andhra_pradesh",
+    "pincodes": ["523001"]
+  },
+  "deoghar": {
+    "state": "jharkhand",
+    "pincodes": ["814112"]
+  },
+  "chapra": {
+    "state": "bihar",
+    "pincodes": ["841301"]
+  },
+  "haldia": {
+    "state": "west_bengal",
+    "pincodes": ["721602"]
+  },
+  "khandwa": {
+    "state": "madhya_pradesh",
+    "pincodes": ["450001"]
+  },
+  "nandyal": {
+    "state": "andhra_pradesh",
+    "pincodes": ["518501"]
+  },
+  "chittoor": {
+    "state": "andhra_pradesh",
+    "pincodes": ["517001"]
+  },
+  "morbi": {
+    "state": "gujarat",
+    "pincodes": ["363641"]
+  },
+  "amroha": {
+    "state": "uttar_pradesh",
+    "pincodes": ["244221"]
+  },
+  "anand": {
+    "state": "gujarat",
+    "pincodes": ["388001"]
+  },
+  "bhusawal": {
+    "state": "maharashtra",
+    "pincodes": ["425201"]
+  },
+  "orai": {
+    "state": "uttar_pradesh",
+    "pincodes": ["285001"]
+  },
+  "bahraich": {
+    "state": "uttar_pradesh",
+    "pincodes": ["271801"]
+  },
+  "vellore": {
+    "state": "tamil_nadu",
+    "pincodes": ["632001"]
+  },
+  "mahesana": {
+    "state": "gujarat",
+    "pincodes": ["384001"]
+  },
+  "raiganj": {
+    "state": "west_bengal",
+    "pincodes": ["733134"]
+  },
+  "sirsa": {
+    "state": "haryana",
+    "pincodes": ["125055"]
+  },
+  "danapur": {
+    "state": "bihar",
+    "pincodes": ["801503"]
+  },
+  "serampore": {
+    "state": "west_bengal",
+    "pincodes": ["712201"]
+  },
+  "sultan_pur_majra": {
+    "state": "delhi",
+    "pincodes": ["110086"]
+  },
+  "guna": {
+    "state": "madhya_pradesh",
+    "pincodes": ["473001"]
+  },
+  "jaunpur": {
+    "state": "uttar_pradesh",
+    "pincodes": ["222001"]
+  },
+  "panvel": {
+    "state": "maharashtra",
+    "pincodes": ["410206"]
+  },
+  "shillong": {
+    "state": "meghalaya",
+    "pincodes": ["793001"]
+  },
+  "tenali": {
+    "state": "andhra_pradesh",
+    "pincodes": ["522201"]
+  },
+  "khora": {
+    "state": "uttar_pradesh",
+    "pincodes": ["201301"]
+  },
+  "guntakal": {
+    "state": "andhra_pradesh",
+    "pincodes": ["515801"]
+  },
+  "puri": {
+    "state": "odisha",
+    "pincodes": ["752001"]
+  },
+  "compiegne": {
+    "state": "uttar_pradesh",
+    "pincodes": ["209801"]
+  },
+  "kishanganj": {
+    "state": "bihar",
+    "pincodes": ["855107"]
+  },
+  "supaul": {
+    "state": "bihar",
+    "pincodes": ["852131"]
+  },
+  "godda": {
+    "state": "jharkhand",
+    "pincodes": ["814133"]
+  },
+  "hazaribagh": {
+    "state": "jharkhand",
+    "pincodes": ["825301"]
+  },
+  "pakur": {
+    "state": "jharkhand",
+    "pincodes": ["816107"]
+  },
+  "paschim_bardhaman": {
+    "state": "west_bengal",
+    "pincodes": ["713101"]
+  },
+  "dharwad": {
+    "state": "karnataka",
+    "pincodes": ["580001"]
+  },
+  "medininagar": {
+    "state": "jharkhand",
+    "pincodes": ["822101"]
+  }
+}

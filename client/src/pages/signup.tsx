@@ -59,22 +59,20 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
           {[1, 2, 3, 4].map((level) => (
             <div
               key={level}
-              className={`h-1.5 flex-1 rounded-full transition-colors ${
-                level <= strength.level ? strength.color : "bg-muted"
-              }`}
+              className={`h-1.5 flex-1 rounded-full transition-colors ${level <= strength.level ? strength.color : "bg-muted"
+                }`}
               data-testid={`strength-bar-${level}`}
             />
           ))}
         </div>
         {strength.label && (
           <span
-            className={`text-xs font-medium ${
-              strength.level <= 1
-                ? "text-destructive"
-                : strength.level === 2
+            className={`text-xs font-medium ${strength.level <= 1
+              ? "text-destructive"
+              : strength.level === 2
                 ? "text-yellow-600 dark:text-yellow-500"
                 : "text-primary"
-            }`}
+              }`}
             data-testid="text-strength-label"
           >
             {strength.label}
@@ -119,6 +117,7 @@ export default function SignupPage() {
       countryCode: "+91",
       phoneNumber: "",
       password: "",
+      role: "intern",
       agreedToTerms: false,
     },
   });
@@ -128,15 +127,30 @@ export default function SignupPage() {
       const response = await apiRequest("POST", "/api/auth/signup", data);
       return response.json();
     },
-    onSuccess: () => {
-      toast({
-        title: "Account created successfully!",
-        description: "Welcome to Findtern. Start exploring internships now.",
-      });
+    onSuccess: (data: any) => {
+      // Store user ID for onboarding
+      console.log("Signup response:", data);
+      if (data.user?.id) {
+        localStorage.setItem("userId", data.user.id);
+        localStorage.setItem("userEmail", data.user.email);
+        console.log("Stored userId:", data.user.id);
+        console.log("Stored userEmail:", data.user.email);
+      } else {
+        console.error("User ID not found in response:", data);
+        // If user.id is not present, show error
+        toast({
+          title: "Warning",
+          description: "User created but ID not returned. Please contact support.",
+          variant: "destructive",
+        });
+        return;
+      }
+    
       form.reset();
       setLocation("/onboarding-loading");
     },
     onError: (error: Error) => {
+      console.error("Signup error:", error);
       toast({
         title: "Registration failed",
         description: error.message || "Something went wrong. Please try again.",
@@ -164,16 +178,16 @@ export default function SignupPage() {
         <div className="absolute -top-20 -left-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl" />
         <div className="absolute top-20 left-10 w-8 h-8 border-2 border-primary/20 rounded-lg transform rotate-12" />
         <div className="absolute top-40 left-20 w-4 h-4 bg-primary/30 rounded-full" />
-        
+
         {/* Top right decorative shapes */}
         <div className="absolute -top-10 -right-10 w-48 h-48 bg-primary/5 rounded-full blur-2xl" />
         <div className="absolute top-32 right-20 w-6 h-6 border-2 border-primary/20 rounded-full" />
-        
+
         {/* Bottom decorative shapes */}
         <div className="absolute -bottom-20 -right-20 w-72 h-72 bg-primary/5 rounded-full blur-3xl" />
         <div className="absolute bottom-32 right-32 w-12 h-12 bg-primary/10 rounded-full" />
         <div className="absolute bottom-20 left-32 w-16 h-16 border-2 border-primary/10 rounded-full" />
-        
+
         {/* Grid pattern overlay */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.02)_1px,transparent_1px)] bg-[size:40px_40px]" />
       </div>
@@ -181,9 +195,9 @@ export default function SignupPage() {
       <Card className="w-full max-w-md md:max-w-lg p-5 md:p-7 relative z-10 border border-card-border/80 shadow-xl rounded-2xl bg-card/95 backdrop-blur">
         {/* Logo */}
         <div className="flex justify-center mb-4" data-testid="logo-container">
-          <img 
-            src={findternLogo} 
-            alt="Findtern - Internship Simplified" 
+          <img
+            src={findternLogo}
+            alt="Findtern - Internship Simplified"
             className="h-12 md:h-14 w-auto object-contain"
             data-testid="img-logo"
           />
@@ -219,7 +233,7 @@ export default function SignupPage() {
           Continue with Google
         </Button>
         <p className="text-[11px] text-center text-muted-foreground mb-4">
-          Use your college email if you have one – it helps us personalise internships for you.
+          Use your primary personal email – this will be your main login and communication ID.
         </p>
 
         {/* Divider */}
@@ -302,7 +316,7 @@ export default function SignupPage() {
                   </FormItem>
                 )}
               />
-              
+
               <FormItem>
                 <FormLabel className="text-sm font-medium text-foreground">
                   Phone Number<span className="text-destructive ml-0.5">*</span>
@@ -320,8 +334,8 @@ export default function SignupPage() {
                         </FormControl>
                         <SelectContent>
                           {countryCodes.map((country) => (
-                            <SelectItem 
-                              key={country.code} 
+                            <SelectItem
+                              key={country.code}
                               value={country.code}
                               data-testid={`option-country-code-${country.country.toLowerCase()}`}
                             >

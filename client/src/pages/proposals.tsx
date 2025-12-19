@@ -20,6 +20,9 @@ import {
   GraduationCap,
   Check,
   X,
+  MapPin,
+  MessageSquare,
+  Sparkles,
 } from "lucide-react";
 import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
 
@@ -108,8 +111,99 @@ export default function ProposalsPage() {
       </header>
 
       <div className="container px-4 md:px-6 py-8">
-        <h1 className="text-2xl font-bold text-[#0E6049] mb-6">My Proposals</h1>
-        <p className="text-muted-foreground">Your internship proposals will appear here.</p>
+        <h1 className="text-2xl font-bold text-[#0E6049] mb-2">Internship Proposals</h1>
+        <p className="text-sm text-muted-foreground mb-6">
+          This is a static preview. In production, all your active internship proposals will be listed here.
+        </p>
+
+        {/* Static proposal card */}
+        <Card className="max-w-xl border border-emerald-50 shadow-sm rounded-2xl p-4 md:p-5 flex flex-col gap-3">
+          {/* Header: company + meta */}
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <GraduationCap className="w-4 h-4 text-emerald-600" />
+                <p className="text-sm font-semibold text-slate-900">sonu</p>
+              </div>
+              <p className="flex items-center gap-1 text-xs text-slate-600">
+                <MapPin className="w-3.5 h-3.5 text-red-400" />
+                Jaipur, Rajasthan · Onsite
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 border border-emerald-100">
+                  Medium-Term
+                </span>
+                <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 border border-amber-100">
+                  Stipend: ₹12,000 / month
+                </span>
+              </div>
+            </div>
+
+            {/* Chat icon button */}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 shrink-0"
+              onClick={() => setLocation("/proposals/1")}
+            >
+              <MessageSquare className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {/* Rating row */}
+          <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+            <p className="mb-1 flex items-center gap-1 font-semibold text-slate-800">
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              AI Interview Ratings
+            </p>
+            <div className="grid grid-cols-2 gap-1.5 text-[11px] text-slate-700">
+              <span className="flex items-center justify-between">
+                <span>Communication</span>
+                <span className="font-semibold text-emerald-700">8</span>
+              </span>
+              <span className="flex items-center justify-between">
+                <span>Coding</span>
+                <span className="font-semibold text-emerald-700">8</span>
+              </span>
+              <span className="flex items-center justify-between">
+                <span>Aptitude</span>
+                <span className="font-semibold text-emerald-700">8</span>
+              </span>
+              <span className="flex items-center justify-between">
+                <span>Overall Interview</span>
+                <span className="font-semibold text-emerald-700">8</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Skills */}
+          <div>
+            <p className="mb-1 text-xs font-semibold text-slate-800">Skills</p>
+            <div className="flex flex-wrap gap-1.5">
+              {["Angular Integration", "TensorFlow Advanced Concepts", "Go Scalability", "JavaScript Monitoring"].map(
+                (skill) => (
+                  <span
+                    key={skill}
+                    className="inline-flex items-center rounded-full bg-slate-50 border border-slate-200 px-2 py-0.5 text-[11px] text-slate-700"
+                  >
+                    {skill}
+                  </span>
+                ),
+              )}
+            </div>
+          </div>
+
+          {/* Footer CTA */}
+          <div className="pt-2 flex items-center justify-between gap-3">
+            <Button
+              className="flex-1 rounded-full h-9 text-xs font-medium"
+              style={{ backgroundColor: "#0E6049" }}
+              onClick={() => setLocation("/proposals/1")}
+            >
+              View Proposal
+            </Button>
+          </div>
+        </Card>
       </div>
     </div>
   );

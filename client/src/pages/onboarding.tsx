@@ -1,5 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,12 +14,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import skillsData from "@/data/skills.json";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Check, UploadCloud, PlayCircle, ZoomIn, ZoomOut, RotateCw, X, FileText, Trash2, Plus } from "lucide-react";
+import { Check, UploadCloud, PlayCircle, ZoomIn, ZoomOut, RotateCw, X, FileText, Trash2, Plus, Loader2, MapPin, Laptop, Globe } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
 import Cropper from "react-easy-crop";
+import * as faceapi from "face-api.js";
 import { countryCodes } from "@shared/schema";
+import cityStatePincode from "@/data/cityStatePincode.json";
 import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
 
 const steps = [
@@ -38,6 +44,7 @@ type AboutMeForm = {
   emergencyCountryCode: string;
   emergencyPhone: string;
   email: string;
+  linkedinUrl: string;
   location: string;
   bio: string;
   pinCode: string;
@@ -55,6 +62,12 @@ type AboutMeErrors = Partial<
   Record<keyof Omit<AboutMeForm, "profilePhoto" | "introVideo" | "aadhaarImage" | "panImage"> | "profileMedia" | "aadhaarImage" | "panImage", string>
 >;
 
+type LocationPreferencesState = {
+  locationTypes: string[];
+  preferredLocations: string[];
+  hasLaptop: string;
+};
+
 export default function OnboardingPage() {
   const [, setLocation] = useLocation();
   const [activeStep, setActiveStep] = useState<number>(0);
@@ -66,6 +79,7 @@ export default function OnboardingPage() {
     emergencyCountryCode: "+91",
     emergencyPhone: "",
     email: "",
+    linkedinUrl: "",
     location: "",
     bio: "",
     pinCode: "",
@@ -80,12 +94,87 @@ export default function OnboardingPage() {
   });
   const [aboutMeErrors, setAboutMeErrors] = useState<AboutMeErrors>({});
   const [showPaymentBanner, setShowPaymentBanner] = useState<boolean>(true);
+  const [academicsComplete, setAcademicsComplete] = useState(false);
+  const [experienceComplete, setExperienceComplete] = useState(true); // Step 2 is optional (can skip)
+  const [skills, setSkills] = useState<SkillEntry[]>([]);
+  const [skillsStepComplete, setSkillsStepComplete] = useState(false);
+  const [locationPrefs, setLocationPrefs] = useState<LocationPreferencesState>({
+    locationTypes: [],
+    preferredLocations: [],
+    hasLaptop: "",
+  });
+  const [languagesComplete, setLanguagesComplete] = useState(false);
+  const [locationPrefsComplete, setLocationPrefsComplete] = useState(false);
+  const [academicsData, setAcademicsData] = useState<any>(null);
+  const [experienceData, setExperienceData] = useState<any[]>([]);
+  const [languagesData, setLanguagesData] = useState<any[]>([]);
+  const [extracurricularData, setExtracurricularData] = useState<any[]>([]);
+  const { toast } = useToast();
+
+  // Debug userId on component mount
+  useEffect(() => {
+    const userId = localStorage.getItem("userId");
+    console.log("Onboarding page mounted. UserId from localStorage:", userId);
+    if (!userId) {
+      console.warn("No userId found. Attempting to recover from userEmail...");
+      const userEmail = localStorage.getItem("userEmail");
+      if (userEmail) {
+        console.log("Found userEmail in localStorage:", userEmail);
+        // Attempt to recover userId from email
+        apiRequest("GET", `/api/auth/user/by-email/${encodeURIComponent(userEmail)}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.user?.id) {
+              console.log("Recovered userId from email:", data.user.id);
+              localStorage.setItem("userId", data.user.id);
+            }
+          })
+          .catch(err => console.error("Failed to recover userId:", err));
+      }
+    }
+  }, []);
 
   const handleAboutMeChange = (field: keyof AboutMeForm, value: string | File | null) => {
     setAboutMe((prev) => ({
       ...prev,
       [field]: value,
     }));
+
+    // Auto-resolve PIN to state & city using India Post API
+    if (field === "pinCode" && typeof value === "string") {
+      const pin = value.replace(/\D/g, "");
+      if (pin.length === 6) {
+        fetch(`https://api.postalpincode.in/pincode/${pin}`)
+          .then((res) => res.json())
+          .then((data) => {
+            const info = data?.[0]?.PostOffice?.[0];
+            if (info) {
+              setAboutMe((prev) => ({
+                ...prev,
+                state: info.State || prev.state,
+                city: info.District || prev.city,
+              }));
+              // Clear state/city validation errors once auto-filled
+              setAboutMeErrors((prev) => {
+                const updated = { ...prev };
+                delete (updated as Record<string, string>)["state"];
+                delete (updated as Record<string, string>)["city"];
+                return updated;
+              });
+            }
+          })
+          .catch(() => {
+            // silently ignore API errors, user will see validation if state/city stay empty
+          });
+      } else {
+        // reset auto-filled fields if PIN becomes invalid
+        setAboutMe((prev) => ({
+          ...prev,
+          state: "",
+          city: "",
+        }));
+      }
+    }
 
     // Clear error as user types/changes media
     if (field in aboutMeErrors) {
@@ -130,16 +219,23 @@ export default function OnboardingPage() {
       errors.phone = "Enter a valid phone number";
     }
 
-    if (!aboutMe.emergencyPhone.trim()) {
-      errors.emergencyPhone = "Emergency contact is required";
-    } else if (aboutMe.emergencyPhone.replace(/\D/g, "").length < 10) {
-      errors.emergencyPhone = "Enter a valid emergency contact number";
+    if (aboutMe.emergencyPhone.trim()) {
+      if (aboutMe.emergencyPhone.replace(/\D/g, "").length < 10) {
+        errors.emergencyPhone = "Enter a valid emergency contact number";
+      }
     }
 
     if (!aboutMe.email.trim()) {
       errors.email = "Email is required";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(aboutMe.email)) {
       errors.email = "Enter a valid email address";
+    }
+
+    if (aboutMe.linkedinUrl.trim()) {
+      const urlPattern = /^(https?:\/\/)?(www\.)?linkedin\.com\/.+/i;
+      if (!urlPattern.test(aboutMe.linkedinUrl.trim())) {
+        errors.linkedinUrl = "Enter a valid LinkedIn profile URL";
+      }
     }
 
     if (!aboutMe.pinCode.trim()) {
@@ -184,11 +280,18 @@ export default function OnboardingPage() {
     return Object.keys(errors).length === 0;
   };
 
-  const validateExperience = (): boolean => {
+  const validateExperience = (experiences: any[]): boolean => {
     // Experience step is optional - can be skipped
     // If user has started filling any experience, all fields in that experience must be filled
-    // For now, we'll allow empty experiences (skip functionality)
-    return true;
+    if (experiences.length === 0) return true; // Empty is valid (skip)
+
+    // If any experience has any field filled, all fields must be filled
+    return experiences.every((exp) => {
+      const hasAnyField = exp.company || exp.role || exp.from || exp.to || exp.description;
+      if (!hasAnyField) return true; // Empty experience is valid
+      // If any field is filled, all must be filled
+      return exp.company && exp.role && exp.from && exp.to && exp.description;
+    });
   };
 
   const goNext = () => {
@@ -197,12 +300,18 @@ export default function OnboardingPage() {
       const ok = validateAboutMe();
       if (!ok) return;
     }
-    // Step 2 (Experience) - validate if any experience is started
-    if (activeStep === 2) {
-      const ok = validateExperience();
-      if (!ok) return;
+    // Step 1 (Academics) - require main fields
+    if (activeStep === 1 && !academicsComplete) {
+      return;
     }
-    // Other steps don't validate - user can proceed without filling
+    // Step 2 (Experience) - validate if any experience is started
+    if (activeStep === 2 && !experienceComplete) {
+      return;
+    }
+    // Step 3 (Skills) - require at least one skill
+    if (activeStep === 3 && !skillsStepComplete) {
+      return;
+    }
 
     setActiveStep((prev) => Math.min(prev + 1, steps.length - 1));
   };
@@ -249,13 +358,6 @@ export default function OnboardingPage() {
               >
                 Pay Now
               </Button>
-              <button
-                type="button"
-                className="hidden h-7 w-7 items-center justify-center rounded-full bg-destructive/5 text-xs text-destructive hover:bg-destructive/10 md:inline-flex"
-                onClick={() => setShowPaymentBanner(false)}
-              >
-                ✕
-              </button>
             </div>
           </div>
         </div>
@@ -272,13 +374,12 @@ export default function OnboardingPage() {
               <button
                 key={label}
                 type="button"
-                className={`flex min-w-[80px] flex-1 items-center gap-2 rounded-full px-2 py-1.5 text-xs md:text-[13px] transition-colors ${
-                  isActive
-                    ? "text-white"
-                    : isCompleted
+                className={`flex min-w-[80px] flex-1 items-center gap-2 rounded-full px-2 py-1.5 text-xs md:text-[13px] transition-colors ${isActive
+                  ? "text-white"
+                  : isCompleted
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground"
-                }`}
+                  }`}
                 style={isActive ? { backgroundColor: '#0E6049' } : {}}
                 onClick={() => {
                   // Allow going back freely, but prevent skipping ahead beyond current step
@@ -305,13 +406,54 @@ export default function OnboardingPage() {
               onChange={handleAboutMeChange}
             />
           )}
-          {activeStep === 1 && <StepAcademics />}
-          {activeStep === 2 && <StepExperience />}
-          {activeStep === 3 && <StepSkills />}
-          {activeStep === 4 && <StepLanguages />}
-          {activeStep === 5 && <StepExtraCurricular />}
-          {activeStep === 6 && <StepLocationPreferences />}
-          {activeStep === 7 && <StepProfilePreview />}
+          {activeStep === 1 && (
+            <StepAcademics
+              onValidityChange={setAcademicsComplete}
+              onDataChange={setAcademicsData}
+            />
+          )}
+          {activeStep === 2 && (
+            <StepExperience
+              onValidityChange={setExperienceComplete}
+              onDataChange={setExperienceData}
+            />
+          )}
+          {activeStep === 3 && (
+            <StepSkills
+              skills={skills}
+              onSkillsChange={(nextSkills, complete) => {
+                setSkills(nextSkills);
+                setSkillsStepComplete(complete);
+              }}
+            />
+          )}
+          {activeStep === 4 && (
+            <StepLanguages
+              onValidityChange={setLanguagesComplete}
+              onDataChange={setLanguagesData}
+            />
+          )}
+          {activeStep === 5 && (
+            <StepExtraCurricular onDataChange={setExtracurricularData} />
+          )}
+          {activeStep === 6 && (
+            <StepLocationPreferences
+              state={locationPrefs}
+              onChange={setLocationPrefs}
+              onValidityChange={setLocationPrefsComplete}
+            />
+          )}
+          {activeStep === 7 && (
+            <StepProfilePreview
+              aboutMe={aboutMe}
+              academicsData={academicsData}
+              experienceData={experienceData}
+              skills={skills}
+              languagesData={languagesData}
+              extracurricularData={extracurricularData}
+              locationPrefs={locationPrefs}
+            />
+          )}
 
           {/* Navigation buttons */}
           <div className="mt-6 flex items-center justify-between gap-3">
@@ -340,20 +482,29 @@ export default function OnboardingPage() {
                   type="button"
                   className="px-6 text-xs md:text-sm rounded-full"
                   style={{ backgroundColor: '#0E6049' }}
+                  disabled={
+                    (activeStep === 1 && !academicsComplete) ||
+                    (activeStep === 2 && !experienceComplete) ||
+                    (activeStep === 3 && !skillsStepComplete) ||
+                    (activeStep === 4 && !languagesComplete) ||
+                    (activeStep === 6 && !locationPrefsComplete)
+                  }
                   onClick={goNext}
                 >
                   Save & Continue
                 </Button>
               )}
               {activeStep === steps.length - 1 && (
-                <Button 
-                  type="button" 
-                  className="px-6 text-xs md:text-sm rounded-full"
-                  style={{ backgroundColor: '#0E6049' }}
-                  onClick={() => setLocation("/dashboard")}
-                >
-                  Finish & View Opportunities
-                </Button>
+                <FinishOnboardingButton
+                  aboutMe={aboutMe}
+                  academicsData={academicsData}
+                  experienceData={experienceData}
+                  skills={skills}
+                  languagesData={languagesData}
+                  extracurricularData={extracurricularData}
+                  locationPrefs={locationPrefs}
+                  onSuccess={() => setLocation("/dashboard")}
+                />
               )}
             </div>
           </div>
@@ -387,6 +538,33 @@ function StepAboutMe({
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
+  const [cityPopoverOpen, setCityPopoverOpen] = useState(false);
+  const [profileMediaError, setProfileMediaError] = useState<string | null>(null);
+  const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadModels = async () => {
+      try {
+        await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
+        if (isMounted) {
+          setFaceModelsLoaded(true);
+        }
+      } catch (error) {
+        console.error("Failed to load face detection models", error);
+        if (isMounted) {
+          setFaceModelsLoaded(false);
+        }
+      }
+    };
+
+    loadModels();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const profilePreview = form.profilePhoto ? URL.createObjectURL(form.profilePhoto) : null;
   const aadhaarPreview = form.aadhaarImage ? URL.createObjectURL(form.aadhaarImage) : null;
@@ -447,9 +625,87 @@ function StepAboutMe({
     });
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const detectFaceInFile = async (file: File): Promise<boolean> => {
+    try {
+      // If models are not loaded yet, don't block the user.
+      // We still enforce strict validation once models are ready.
+      if (!faceModelsLoaded) {
+        return true;
+      }
+
+      const imageUrl = URL.createObjectURL(file);
+
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => {
+          URL.revokeObjectURL(imageUrl);
+          resolve(image);
+        };
+        image.onerror = (err) => {
+          URL.revokeObjectURL(imageUrl);
+          reject(err);
+        };
+        image.src = imageUrl;
+      });
+
+      // Run detection with standard settings.
+      let detections = await faceapi.detectAllFaces(
+        img,
+        new faceapi.TinyFaceDetectorOptions({
+          inputSize: 416,
+          scoreThreshold: 0.25,
+        }),
+      );
+
+      // If no faces are found, try a second, more lenient pass to better handle
+      // real-world photos (e.g. compressed / WhatsApp images, slightly smaller faces).
+      if (!Array.isArray(detections) || detections.length === 0) {
+        detections = await faceapi.detectAllFaces(
+          img,
+          new faceapi.TinyFaceDetectorOptions({
+            inputSize: 320,
+            scoreThreshold: 0.1,
+          }),
+        );
+      }
+
+      if (!Array.isArray(detections) || detections.length === 0) {
+        setProfileMediaError("Face not detected. Please upload a clear passport-size photo with your face visible.");
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Face detection failed", error);
+      setProfileMediaError("Could not verify face in the photo. Please try again or use a clearer image.");
+      return false;
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setProfileMediaError(null);
+
+      if (!file.type.startsWith("image/")) {
+        setProfileMediaError("Please upload an image file (JPG or PNG).");
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        setProfileMediaError("File is too large. Max size is 5MB.");
+        return;
+      }
+
+      const hasFace = await detectFaceInFile(file);
+      if (!hasFace) {
+        // Strict mode: block non-human or unclear photos.
+        if (!profileMediaError) {
+          setProfileMediaError("Face not detected. Please upload a clear passport-size photo with your face visible.");
+        }
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = () => {
         setImageToCrop(reader.result as string);
@@ -492,14 +748,14 @@ function StepAboutMe({
         croppedAreaPixels,
         rotation
       );
-      
+
       // Resize to passport size: 600x600 pixels (2x2 inches at 300 DPI)
       const resizedImage = await resizeImage(croppedImage, 600, 600);
-      
+
       const file = new File([resizedImage], "profile-photo.jpg", {
         type: "image/jpeg",
       });
-      
+
       onChange("profilePhoto", file);
       setShowCropDialog(false);
       setImageToCrop(null);
@@ -512,7 +768,7 @@ function StepAboutMe({
     <div className="space-y-6">
       <SectionTitle
         title="About Me"
-        subtitle="Tell us the basics so we can personalise your internship recommendations."
+        subtitle="Tell us the basics so we can build your profile for opportunities."
       />
 
       {/* Media section */}
@@ -523,9 +779,8 @@ function StepAboutMe({
             Profile photo (Passport Size)<span className="text-destructive ml-0.5">*</span>
           </label>
           <label
-            className={`group flex cursor-pointer items-center gap-4 rounded-2xl border border-dashed px-4 py-3 md:px-5 md:py-4 bg-card/70 hover:bg-primary/5 transition-colors ${
-              errors.profileMedia ? "border-destructive/60" : "border-border/80"
-            }`}
+            className={`group flex cursor-pointer items-center gap-4 rounded-2xl border border-dashed px-4 py-3 md:px-5 md:py-4 bg-card/70 hover:bg-primary/5 transition-colors ${errors.profileMedia ? "border-destructive/60" : "border-border/80"
+              }`}
           >
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted overflow-hidden">
               {profilePreview ? (
@@ -552,6 +807,9 @@ function StepAboutMe({
           </label>
           {errors.profileMedia && (
             <p className="text-[11px] text-destructive mt-0.5">{errors.profileMedia}</p>
+          )}
+          {profileMediaError && !errors.profileMedia && (
+            <p className="text-[11px] text-destructive mt-0.5">{profileMediaError}</p>
           )}
 
           {/* Crop Dialog */}
@@ -684,9 +942,8 @@ function StepAboutMe({
           </label>
           <Input
             placeholder="Enter your first name"
-            className={`h-10 md:h-11 rounded-lg text-sm ${
-              errors.firstName ? "border-destructive/70" : ""
-            }`}
+            className={`h-10 md:h-11 rounded-lg text-sm ${errors.firstName ? "border-destructive/70" : ""
+              }`}
             value={form.firstName}
             onChange={(e) => onChange("firstName", e.target.value)}
           />
@@ -700,9 +957,8 @@ function StepAboutMe({
           </label>
           <Input
             placeholder="Enter your last name"
-            className={`h-10 md:h-11 rounded-lg text-sm ${
-              errors.lastName ? "border-destructive/70" : ""
-            }`}
+            className={`h-10 md:h-11 rounded-lg text-sm ${errors.lastName ? "border-destructive/70" : ""
+              }`}
             value={form.lastName}
             onChange={(e) => onChange("lastName", e.target.value)}
           />
@@ -743,9 +999,8 @@ function StepAboutMe({
             </div>
             <Input
               placeholder="Enter your phone number"
-              className={`flex-1 h-10 md:h-11 rounded-lg text-sm ${
-                errors.phone ? "border-destructive/70" : ""
-              }`}
+              className={`flex-1 h-10 md:h-11 rounded-lg text-sm ${errors.phone ? "border-destructive/70" : ""
+                }`}
               value={form.phone}
               onChange={(e) => {
                 const digitsOnly = e.target.value.replace(/\D/g, "");
@@ -757,7 +1012,7 @@ function StepAboutMe({
         </div>
         <div className="space-y-1.5">
           <label className="text-xs md:text-sm font-medium text-foreground">
-            Emergency Contact Number<span className="text-destructive ml-0.5">*</span>
+            Emergency Contact Number (optional)
           </label>
           <div className="flex gap-2.5">
             <div className="w-[110px]">
@@ -784,9 +1039,8 @@ function StepAboutMe({
             </div>
             <Input
               placeholder="Emergency phone number"
-              className={`flex-1 h-10 md:h-11 rounded-lg text-sm ${
-                errors.emergencyPhone ? "border-destructive/70" : ""
-              }`}
+              className={`flex-1 h-10 md:h-11 rounded-lg text-sm ${errors.emergencyPhone ? "border-destructive/70" : ""
+                }`}
               value={form.emergencyPhone}
               onChange={(e) => {
                 const digitsOnly = e.target.value.replace(/\D/g, "");
@@ -805,64 +1059,156 @@ function StepAboutMe({
           Email<span className="text-destructive ml-0.5">*</span>
         </label>
         <Input
-          placeholder="College or personal email"
-          className={`h-10 md:h-11 rounded-lg text-sm ${
-            errors.email ? "border-destructive/70" : ""
-          }`}
+          placeholder="Personal email"
+          className={`h-10 md:h-11 rounded-lg text-sm ${errors.email ? "border-destructive/70" : ""
+            }`}
           value={form.email}
           onChange={(e) => onChange("email", e.target.value)}
         />
         {errors.email && <p className="text-[11px] text-destructive mt-0.5">{errors.email}</p>}
       </div>
 
-      {/* PIN, State, City */}
+      <div className="space-y-1.5">
+        <label className="text-xs md:text-sm font-medium text-foreground">
+          LinkedIn Profile (optional)
+        </label>
+        <Input
+          placeholder="https://www.linkedin.com/in/your-profile"
+          className={`h-10 md:h-11 rounded-lg text-sm ${errors.linkedinUrl ? "border-destructive/70" : ""
+            }`}
+          value={form.linkedinUrl}
+          onChange={(e) => onChange("linkedinUrl", e.target.value)}
+        />
+        {errors.linkedinUrl && (
+          <p className="text-[11px] text-destructive mt-0.5">{errors.linkedinUrl}</p>
+        )}
+      </div>
+
+      {/* City, State, PIN - searchable City drives auto-fill from JSON */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-1.5">
           <label className="text-xs md:text-sm font-medium text-foreground">
-            PIN Code<span className="text-destructive ml-0.5">*</span>
+            City<span className="text-destructive ml-0.5">*</span>
           </label>
-          <Input
-            placeholder="e.g. 302001"
-            className={`h-10 md:h-11 rounded-lg text-sm ${
-              errors.pinCode ? "border-destructive/70" : ""
-            }`}
-            value={form.pinCode}
-            onChange={(e) => {
-              const digitsOnly = e.target.value.replace(/\D/g, "");
-              onChange("pinCode", digitsOnly);
-            }}
-          />
-          {errors.pinCode && (
-            <p className="text-[11px] text-destructive mt-0.5">{errors.pinCode}</p>
-          )}
+          <Popover open={cityPopoverOpen} onOpenChange={setCityPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className={`w-full h-10 md:h-11 justify-between rounded-lg text-sm ${errors.city ? "border-destructive/70" : ""}`}
+              >
+                <span className="truncate text-left">
+                  {form.city
+                    ? form.city
+                        .replace(/_/g, " ")
+                        .replace(/\b\w/g, (ch) => ch.toUpperCase())
+                    : "Select your city"}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[360px] p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Search Indian cities..." />
+                <CommandList>
+                  <CommandEmpty>No city found.</CommandEmpty>
+                  <CommandGroup>
+                    {Object.entries(
+                      cityStatePincode as Record<string, { state: string; pincodes: string[] }>
+                    )
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([cityKey, value]) => (
+                        <CommandItem
+                          key={cityKey}
+                          value={cityKey}
+                          onSelect={(selectedKey) => {
+                            const entry = (cityStatePincode as Record<
+                              string,
+                              { state: string; pincodes: string[] }
+                            >)[selectedKey];
+                            if (entry) {
+                              onChange("city", selectedKey);
+                              onChange("state", entry.state);
+                              onChange("pinCode", entry.pincodes[0] || "");
+                            } else {
+                              onChange("city", selectedKey);
+                            }
+                            setCityPopoverOpen(false);
+                          }}
+                        >
+                          {cityKey
+                            .replace(/_/g, " ")
+                            .replace(/\b\w/g, (ch) => ch.toUpperCase())}
+                        </CommandItem>
+                      ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+          {errors.city && <p className="text-[11px] text-destructive mt-0.5">{errors.city}</p>}
         </div>
+
         <div className="space-y-1.5">
           <label className="text-xs md:text-sm font-medium text-foreground">
             State<span className="text-destructive ml-0.5">*</span>
           </label>
           <Input
-            placeholder="Auto-filled from PIN (you can edit)"
-            className={`h-10 md:h-11 rounded-lg text-sm ${
-              errors.state ? "border-destructive/70" : ""
-            }`}
+            placeholder="Auto-filled from city"
+            className={`h-10 md:h-11 rounded-lg text-sm ${errors.state ? "border-destructive/70" : ""
+              }`}
             value={form.state}
-            onChange={(e) => onChange("state", e.target.value)}
+            disabled
           />
           {errors.state && <p className="text-[11px] text-destructive mt-0.5">{errors.state}</p>}
         </div>
+
         <div className="space-y-1.5">
           <label className="text-xs md:text-sm font-medium text-foreground">
-            City<span className="text-destructive ml-0.5">*</span>
+            PIN Code<span className="text-destructive ml-0.5">*</span>
           </label>
-          <Input
-            placeholder="Auto-filled from PIN (you can edit)"
-            className={`h-10 md:h-11 rounded-lg text-sm ${
-              errors.city ? "border-destructive/70" : ""
-            }`}
-            value={form.city}
-            onChange={(e) => onChange("city", e.target.value)}
-          />
-          {errors.city && <p className="text-[11px] text-destructive mt-0.5">{errors.city}</p>}
+          {(() => {
+            const cityMap = cityStatePincode as Record<string, { state: string; pincodes: string[] }>;
+            const currentCity = form.city && cityMap[form.city] ? cityMap[form.city] : null;
+            const pincodes = currentCity?.pincodes ?? [];
+
+            if (pincodes.length >= 1) {
+              return (
+                <Select
+                  value={form.pinCode}
+                  onValueChange={(val) => onChange("pinCode", val)}
+                >
+                  <SelectTrigger
+                    className={`h-10 md:h-11 rounded-lg text-sm ${
+                      errors.pinCode ? "border-destructive/70" : ""
+                    }`}
+                  >
+                    <SelectValue placeholder="Select PIN code" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pincodes.map((pin) => (
+                      <SelectItem key={pin} value={pin}>
+                        {pin}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              );
+            }
+
+            return (
+              <Input
+                placeholder="Auto-filled from city"
+                className={`h-10 md:h-11 rounded-lg text-sm ${
+                  errors.pinCode ? "border-destructive/70" : ""
+                }`}
+                value={form.pinCode}
+                onChange={(e) => onChange("pinCode", e.target.value)}
+              />
+            );
+          })()}
+          {errors.pinCode && (
+            <p className="text-[11px] text-destructive mt-0.5">{errors.pinCode}</p>
+          )}
         </div>
       </div>
 
@@ -874,14 +1220,19 @@ function StepAboutMe({
           </label>
           <Input
             placeholder="Enter Aadhaar number"
-            className={`h-10 md:h-11 rounded-lg text-sm ${
-              errors.aadhaarNumber ? "border-destructive/70" : ""
-            }`}
+            className={`h-10 md:h-11 rounded-lg text-sm ${errors.aadhaarNumber ? "border-destructive/70" : ""
+              }`}
             value={form.aadhaarNumber}
-            maxLength={12}
+            maxLength={14}
             onChange={(e) => {
               const digitsOnly = e.target.value.replace(/\D/g, "").slice(0, 12);
-              onChange("aadhaarNumber", digitsOnly);
+
+              const formatted = digitsOnly
+                .match(/.{1,4}/g)
+                ?.join(" ")
+                .trim() ?? "";
+
+              onChange("aadhaarNumber", formatted);
             }}
           />
           {errors.aadhaarNumber && (
@@ -894,9 +1245,8 @@ function StepAboutMe({
           </label>
           <Input
             placeholder="Enter PAN number"
-            className={`h-10 md:h-11 rounded-lg text-sm ${
-              errors.panNumber ? "border-destructive/70" : ""
-            }`}
+            className={`h-10 md:h-11 rounded-lg text-sm ${errors.panNumber ? "border-destructive/70" : ""
+              }`}
             value={form.panNumber}
             maxLength={10}
             onChange={(e) => {
@@ -910,15 +1260,7 @@ function StepAboutMe({
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <label className="text-xs md:text-sm font-medium text-foreground">Bio (optional)</label>
-        <Textarea
-          placeholder="Tell us briefly about yourself, your goals, or what kind of work you’d love to do."
-          className="min-h-[90px] md:min-h-[110px] rounded-lg text-sm"
-          value={form.bio}
-          onChange={(e) => onChange("bio", e.target.value)}
-        />
-      </div>
+    
 
       {/* Document uploads */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
@@ -927,9 +1269,8 @@ function StepAboutMe({
             Upload Aadhaar (optional)
           </label>
           <label
-            className={`group flex cursor-pointer flex-col items-start gap-3 rounded-2xl border border-dashed px-4 py-3 md:px-5 md:py-4 bg-card/70 hover:bg-primary/5 transition-colors ${
-              errors.aadhaarImage ? "border-destructive/60" : "border-border/80"
-            }`}
+            className={`group flex cursor-pointer flex-col items-start gap-3 rounded-2xl border border-dashed px-4 py-3 md:px-5 md:py-4 bg-card/70 hover:bg-primary/5 transition-colors ${errors.aadhaarImage ? "border-destructive/60" : "border-border/80"
+              }`}
           >
             <div className="flex items-center gap-3 w-full">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted overflow-hidden">
@@ -951,10 +1292,22 @@ function StepAboutMe({
             </div>
             <input
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0] ?? null;
+                if (!file) {
+                  onChange("aadhaarImage", null);
+                  return;
+                }
+
+                const maxSizeBytes = 5 * 1024 * 1024; // 5MB
+                const allowedTypes = ["image/jpeg", "image/png"];
+                if (!allowedTypes.includes(file.type) || file.size > maxSizeBytes) {
+                  // Reject files that are not JPEG/PNG or are too large
+                  return;
+                }
+
                 onChange("aadhaarImage", file);
               }}
             />
@@ -969,9 +1322,8 @@ function StepAboutMe({
             Upload PAN<span className="text-destructive ml-0.5">*</span>
           </label>
           <label
-            className={`group flex cursor-pointer flex-col items-start gap-3 rounded-2xl border border-dashed px-4 py-3 md:px-5 md:py-4 bg-card/70 hover:bg-primary/5 transition-colors ${
-              errors.panImage ? "border-destructive/60" : "border-border/80"
-            }`}
+            className={`group flex cursor-pointer flex-col items-start gap-3 rounded-2xl border border-dashed px-4 py-3 md:px-5 md:py-4 bg-card/70 hover:bg-primary/5 transition-colors ${errors.panImage ? "border-destructive/60" : "border-border/80"
+              }`}
           >
             <div className="flex items-center gap-3 w-full">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted overflow-hidden">
@@ -993,10 +1345,22 @@ function StepAboutMe({
             </div>
             <input
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0] ?? null;
+                if (!file) {
+                  onChange("panImage", null);
+                  return;
+                }
+
+                const maxSizeBytes = 5 * 1024 * 1024; // 5MB
+                const allowedTypes = ["image/jpeg", "image/png"];
+                if (!allowedTypes.includes(file.type) || file.size > maxSizeBytes) {
+                  // Reject files that are not JPEG/PNG or are too large
+                  return;
+                }
+
                 onChange("panImage", file);
               }}
             />
@@ -1004,11 +1368,26 @@ function StepAboutMe({
           {errors.panImage && <p className="text-[11px] text-destructive mt-0.5">{errors.panImage}</p>}
         </div>
       </div>
+        <div className="space-y-1.5">
+        <label className="text-xs md:text-sm font-medium text-foreground">Bio (optional)</label>
+        <Textarea
+          placeholder="Tell us briefly about yourself, your goals, or what kind of work you’d love to do."
+          className="min-h-[90px] md:min-h-[110px] rounded-lg text-sm"
+          value={form.bio}
+          onChange={(e) => onChange("bio", e.target.value)}
+        />
+      </div>
     </div>
   );
 }
 
-function StepAcademics() {
+function StepAcademics({
+  onValidityChange,
+  onDataChange,
+}: {
+  onValidityChange: (valid: boolean) => void;
+  onDataChange?: (data: any) => void;
+}) {
   const [level, setLevel] = useState<string>("");
   const [degree, setDegree] = useState<string>("");
   const [specialization, setSpecialization] = useState<string>("");
@@ -1019,6 +1398,18 @@ function StepAcademics() {
   const [scoreType, setScoreType] = useState<"percentage" | "cgpa">("percentage");
   const [score, setScore] = useState<string>("");
   const [marksheetFiles, setMarksheetFiles] = useState<File[]>([]);
+  const [professionalCourses, setProfessionalCourses] = useState<
+    {
+      id: string;
+      courseType: string;
+      title: string;
+      level: string;
+      status: string;
+      institution: string;
+      endYear: string;
+    }[]
+  >([]);
+  const [certificationCourses, setCertificationCourses] = useState<string>("");
 
   // Degree options based on level
   const degreeOptions: Record<string, string[]> = {
@@ -1028,6 +1419,72 @@ function StepAcademics() {
     "bachelors": ["B.Tech", "B.E.", "B.Sc", "B.Com", "B.A.", "BBA", "BCA", "B.Pharm", "Other"],
     "masters": ["M.Tech", "M.E.", "M.Sc", "M.Com", "M.A.", "MBA", "MCA", "M.Pharm", "Other"],
     "phd": ["Ph.D"],
+  };
+
+  // Compute validity whenever key fields change
+  useEffect(() => {
+    const valid =
+      !!level &&
+      !!degree &&
+      !!institution &&
+      startYear.length === 4 &&
+      endYear.length === 4 &&
+      !!score;
+
+    onValidityChange(valid);
+
+    if (valid && onDataChange) {
+      onDataChange({
+        level,
+        degree,
+        specialization,
+        status,
+        institution,
+        startYear,
+        endYear,
+        scoreType,
+        score,
+        professionalCourses,
+        certificationCourses,
+      });
+    }
+  }, [level, degree, specialization, status, institution, startYear, endYear, scoreType, score, professionalCourses, certificationCourses, onValidityChange, onDataChange]);
+
+  const addProfessionalCourse = () => {
+    setProfessionalCourses((prev) => [
+      ...prev,
+      {
+        id: `prof-course-${Date.now()}-${Math.random()}`,
+        courseType: "",
+        title: "",
+        level: "",
+        status: "Completed",
+        institution: "",
+        endYear: "",
+      },
+    ]);
+  };
+
+  const updateProfessionalCourse = (
+    id: string,
+    field: keyof Omit<{
+      id: string;
+      courseType: string;
+      title: string;
+      level: string;
+      status: string;
+      institution: string;
+      endYear: string;
+    }, "id">,
+    value: string,
+  ) => {
+    setProfessionalCourses((prev) =>
+      prev.map((course) => (course.id === id ? { ...course, [field]: value } : course)),
+    );
+  };
+
+  const removeProfessionalCourse = (id: string) => {
+    setProfessionalCourses((prev) => prev.filter((course) => course.id !== id));
   };
 
   return (
@@ -1084,6 +1541,186 @@ function StepAcademics() {
           className="h-10 md:h-11 rounded-lg text-sm"
           value={specialization}
           onChange={(e) => setSpecialization(e.target.value)}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-xs md:text-sm font-medium text-foreground">
+            Professional Courses (optional)
+          </label>
+          {professionalCourses.length > 0 && (
+            <span className="text-[11px] text-muted-foreground">
+              Add any additional bootcamps, online programmes or specialised trainings.
+            </span>
+          )}
+        </div>
+
+        {professionalCourses.length === 0 && (
+          <div className="rounded-lg border border-dashed border-border/70 bg-card/40 px-4 py-3 flex items-center justify-between">
+            <p className="text-[11px] md:text-xs text-muted-foreground mr-3">
+              If you have done any professional or industry‑oriented courses, you can add them here.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 rounded-full text-[11px] md:text-xs"
+              onClick={addProfessionalCourse}
+            >
+              Add professional course
+            </Button>
+          </div>
+        )}
+
+        {professionalCourses.length > 0 && (
+          <div className="space-y-4">
+            {professionalCourses.map((course, index) => (
+              <div
+                key={course.id}
+                className="rounded-xl border border-border/70 bg-card/60 p-4 md:p-5 space-y-3"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs md:text-sm font-medium text-foreground">
+                    Professional Course {index + 1}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => removeProfessionalCourse(course.id)}
+                  >
+                    <X className="h-3.5 w-3.5 mr-1" />
+                    Remove
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Course type
+                    </label>
+                    <Select
+                      value={course.courseType}
+                      onValueChange={(value) => updateProfessionalCourse(course.id, "courseType", value)}
+                    >
+                      <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm">
+                        <SelectValue placeholder="e.g. Bootcamp, Online, Diploma" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="bootcamp">Bootcamp</SelectItem>
+                        <SelectItem value="online">Online course</SelectItem>
+                        <SelectItem value="diploma">Diploma / Long‑term"</SelectItem>
+                        <SelectItem value="workshop">Workshop / Short‑term</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Course name
+                    </label>
+                    <Input
+                      placeholder="e.g. Web app development"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                      value={course.title}
+                      onChange={(e) => updateProfessionalCourse(course.id, "title", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Level / Stage
+                    </label>
+                    <Select
+                      value={course.level}
+                      onValueChange={(value) => updateProfessionalCourse(course.id, "level", value)}
+                    >
+                      <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm">
+                        <SelectValue placeholder="Select level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="local">Local</SelectItem>
+                        <SelectItem value="state">State</SelectItem>
+                        <SelectItem value="national">National</SelectItem>
+                        <SelectItem value="international">International</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Status
+                    </label>
+                    <Select
+                      value={course.status}
+                      onValueChange={(value) => updateProfessionalCourse(course.id, "status", value)}
+                    >
+                      <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm">
+                        <SelectValue placeholder="Completed / Ongoing" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Completed">Completed</SelectItem>
+                        <SelectItem value="Ongoing">Ongoing</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      End Year
+                    </label>
+                    <Input
+                      placeholder="YYYY"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                      value={course.endYear}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, "").slice(0, 4);
+                        updateProfessionalCourse(course.id, "endYear", value);
+                      }}
+                      maxLength={4}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] md:text-xs font-medium text-foreground">
+                    Institution / Body
+                  </label>
+                  <Input
+                    placeholder="e.g. Apna College, IIT Bombay, Coursera, etc."
+                    className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                    value={course.institution}
+                    onChange={(e) => updateProfessionalCourse(course.id, "institution", e.target.value)}
+                  />
+                </div>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-1 text-[11px] md:text-xs rounded-full"
+              onClick={addProfessionalCourse}
+            >
+              Add another professional course
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs md:text-sm font-medium text-foreground">
+          Certification Courses (optional)
+        </label>
+        <Textarea
+          placeholder="List any certification courses (e.g. Coursera, NPTEL, AWS, etc.)"
+          className="min-h-[70px] md:min-h-[90px] rounded-lg text-sm"
+          value={certificationCourses}
+          onChange={(e) => setCertificationCourses(e.target.value)}
         />
       </div>
 
@@ -1292,7 +1929,13 @@ type ExperienceEntry = {
   description: string;
 };
 
-function StepExperience() {
+function StepExperience({
+  onValidityChange,
+  onDataChange,
+}: {
+  onValidityChange: (valid: boolean) => void;
+  onDataChange?: (data: ExperienceEntry[]) => void;
+}) {
   const [experiences, setExperiences] = useState<ExperienceEntry[]>([
     {
       id: `exp-${Date.now()}`,
@@ -1303,6 +1946,18 @@ function StepExperience() {
       description: "",
     },
   ]);
+
+  useEffect(() => {
+    const valid = experiences.every((exp) => {
+      const hasAnyField = exp.company || exp.role || exp.from || exp.to || exp.description;
+      if (!hasAnyField) return true;
+      return exp.company && exp.role && exp.from && exp.to && exp.description;
+    });
+    onValidityChange(valid);
+    if (onDataChange) {
+      onDataChange(experiences.filter((exp) => exp.company && exp.role && exp.from && exp.to && exp.description));
+    }
+  }, [experiences, onValidityChange, onDataChange]);
 
   const addExperience = () => {
     setExperiences([
@@ -1430,33 +2085,42 @@ type SkillEntry = {
   rating: number;
 };
 
-function StepSkills() {
-  const [selectedSkills, setSelectedSkills] = useState<SkillEntry[]>([]);
+function StepSkills({
+  skills,
+  onSkillsChange,
+}: {
+  skills: SkillEntry[];
+  onSkillsChange: (nextSkills: SkillEntry[], complete: boolean) => void;
+}) {
+  const selectedSkills = skills;
   const [open, setOpen] = useState(false);
   const [customSkill, setCustomSkill] = useState("");
-  const skills = (skillsData as unknown as string[]).sort();
+  const allSkills = (skillsData as unknown as string[]).sort();
 
   const addSkill = (skillName: string) => {
     if (selectedSkills.length >= 7) return;
     if (selectedSkills.some((s) => s.name.toLowerCase() === skillName.toLowerCase())) return;
-    
-    setSelectedSkills([
+
+    const next = [
       ...selectedSkills,
       {
         id: `skill-${Date.now()}-${Math.random()}`,
         name: skillName,
-        rating: 3,
+        rating: 1,
       },
-    ]);
+    ];
+    onSkillsChange(next, next.length >= 4);
     setOpen(false);
   };
 
   const removeSkill = (id: string) => {
-    setSelectedSkills(selectedSkills.filter((s) => s.id !== id));
+    const next = selectedSkills.filter((s) => s.id !== id);
+    onSkillsChange(next, next.length >= 4);
   };
 
   const updateRating = (id: string, rating: number) => {
-    setSelectedSkills(selectedSkills.map((s) => (s.id === id ? { ...s, rating } : s)));
+    const next = selectedSkills.map((s) => (s.id === id ? { ...s, rating } : s));
+    onSkillsChange(next, next.length >= 4);
   };
 
   const handleCustomSkill = () => {
@@ -1483,12 +2147,34 @@ function StepSkills() {
               variant="outline"
               role="combobox"
               aria-expanded={open}
-              className="w-full h-10 md:h-11 justify-between rounded-lg text-sm font-normal"
+              className="w-full min-h-10 md:min-h-11 justify-between rounded-lg text-xs md:text-sm font-normal flex items-center gap-2"
               disabled={selectedSkills.length >= 7}
             >
-              <span className="text-muted-foreground">
-                {selectedSkills.length >= 7 ? "Maximum 7 skills selected" : "Search and select skills..."}
-              </span>
+              <div className="flex flex-1 flex-wrap items-center gap-2 text-left">
+                {selectedSkills.map((skill) => (
+                  <span
+                    key={skill.id}
+                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted px-2 py-0.5 text-[11px] md:text-xs text-foreground"
+                  >
+                    {skill.name}
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-destructive flex items-center justify-center"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeSkill(skill.id);
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+                {selectedSkills.length < 7 && (
+                  <span className="text-muted-foreground whitespace-nowrap">
+                    {selectedSkills.length === 0 ? "Search and select skills..." : "Add more skills"}
+                  </span>
+                )}
+              </div>
               <UploadCloud className="ml-2 h-4 w-4 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
@@ -1498,7 +2184,7 @@ function StepSkills() {
               <CommandList>
                 <CommandEmpty>No skill found.</CommandEmpty>
                 <CommandGroup>
-                  {skills.map((skill) => (
+                  {allSkills.map((skill) => (
                     <CommandItem
                       key={skill}
                       value={skill}
@@ -1580,17 +2266,15 @@ function StepSkills() {
                 <label className="text-xs font-medium text-foreground">Rating</label>
                 <Select
                   value={skill.rating.toString()}
-                  onValueChange={(value) => updateRating(skill.id, parseInt(value))}
+                  onValueChange={(value) => updateRating(skill.id, parseInt(value, 10))}
                 >
                   <SelectTrigger className="h-10 md:h-11 rounded-lg text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">1 - Beginner</SelectItem>
-                    <SelectItem value="2">2</SelectItem>
-                    <SelectItem value="3">3 - Intermediate</SelectItem>
-                    <SelectItem value="4">4</SelectItem>
-                    <SelectItem value="5">5 - Advanced</SelectItem>
+                    <SelectItem value="1">Beginner</SelectItem>
+                    <SelectItem value="2">Intermediate</SelectItem>
+                    <SelectItem value="3">Advanced</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1602,10 +2286,9 @@ function StepSkills() {
       {/* Information */}
       <div className="space-y-2 pt-2">
         <ul className="text-[11px] text-muted-foreground space-y-1 list-disc list-inside">
-          <li>Rating values: 1 being the lowest, 5 the highest.</li>
           <li>The interview will be conducted based on the ratings you provide. Please be honest in your self-assessment to help us evaluate your skills more accurately.</li>
         </ul>
-        
+
         <div className="rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3 mt-3">
           <div className="flex items-start gap-2">
             <span className="text-yellow-600 dark:text-yellow-400 text-base">⚠</span>
@@ -1619,18 +2302,6 @@ function StepSkills() {
         </div>
       </div>
 
-      {/* Save Button */}
-      {selectedSkills.length > 0 && (
-        <div className="flex justify-center pt-2">
-          <Button
-            type="button"
-            className="px-8 text-sm rounded-full"
-            style={{ backgroundColor: '#0E6049' }}
-          >
-            Save
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
@@ -1644,15 +2315,29 @@ type LanguageEntry = {
   speak: string;
 };
 
-function StepLanguages() {
+function StepLanguages({
+  onValidityChange,
+  onDataChange,
+}: {
+  onValidityChange: (valid: boolean) => void;
+  onDataChange?: (data: any[]) => void;
+}) {
   const [languages, setLanguages] = useState<LanguageEntry[]>([
     {
-      id: `lang-${Date.now()}`,
-      language: "",
-      level: "",
-      read: "",
-      write: "",
-      speak: "",
+      id: `lang-${Date.now()}-hi`,
+      language: "hindi",
+      level: "native",
+      read: "yes",
+      write: "yes",
+      speak: "yes",
+    },
+    {
+      id: `lang-${Date.now()}-en`,
+      language: "english",
+      level: "professional",
+      read: "yes",
+      write: "yes",
+      speak: "yes",
     },
   ]);
 
@@ -1677,8 +2362,17 @@ function StepLanguages() {
   };
 
   const updateLanguage = (id: string, field: keyof LanguageEntry, value: string) => {
-    setLanguages(languages.map((lang) => (lang.id === id ? { ...lang, [field]: value } : lang)));
+    const updated = languages.map((lang) => (lang.id === id ? { ...lang, [field]: value } : lang));
+    setLanguages(updated);
   };
+
+  useEffect(() => {
+    const complete = languages.filter((lang) => lang.language && lang.level);
+    if (onDataChange) {
+      onDataChange(complete);
+    }
+    onValidityChange(complete.length > 0);
+  }, [languages, onDataChange, onValidityChange]);
 
   return (
     <div className="space-y-5">
@@ -1800,7 +2494,11 @@ type ActivityEntry = {
   level: string;
 };
 
-function StepExtraCurricular() {
+function StepExtraCurricular({
+  onDataChange,
+}: {
+  onDataChange?: (data: any[]) => void;
+}) {
   const [activities, setActivities] = useState<ActivityEntry[]>([
     {
       id: `activity-${Date.now()}`,
@@ -1827,7 +2525,18 @@ function StepExtraCurricular() {
   };
 
   const updateActivity = (id: string, field: keyof ActivityEntry, value: string) => {
-    setActivities(activities.map((act) => (act.id === id ? { ...act, [field]: value } : act)));
+    const updated = activities.map((act) => {
+      if (act.id !== id) return act;
+      const next: ActivityEntry = { ...act, [field]: value };
+      if (field === "activity" && value && !next.level) {
+        next.level = "beginner";
+      }
+      return next;
+    });
+    setActivities(updated);
+    if (onDataChange) {
+      onDataChange(updated.filter((act) => act.activity && act.level));
+    }
   };
 
   return (
@@ -1907,10 +2616,16 @@ function StepExtraCurricular() {
   );
 }
 
-function StepLocationPreferences() {
-  const [locationTypes, setLocationTypes] = useState<string[]>([]);
-  const [preferredLocations, setPreferredLocations] = useState<string[]>([]);
-  const [hasLaptop, setHasLaptop] = useState<string>("");
+function StepLocationPreferences({
+  state,
+  onChange,
+  onValidityChange,
+}: {
+  state: LocationPreferencesState;
+  onChange: (next: LocationPreferencesState) => void;
+  onValidityChange: (valid: boolean) => void;
+}) {
+  const { locationTypes, preferredLocations, hasLaptop } = state;
   const [locationSearch, setLocationSearch] = useState("");
 
   // Indian cities list
@@ -1926,77 +2641,120 @@ function StepLocationPreferences() {
   ];
 
   const toggleLocationType = (type: string) => {
-    setLocationTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
-    );
+    const alreadySelected = locationTypes.includes(type);
+
+    // Naye rules ke hisaab se fixed combinations:
+    // - Remote click  -> ["remote"]
+    // - Hybrid click  -> ["remote", "hybrid"]
+    // - Onsite click  -> ["remote", "hybrid", "onsite"]
+    // - Agar jo type already selected hai uspe dobara click karein -> sab clear
+
+    if (alreadySelected) {
+      onChange({ ...state, locationTypes: [] });
+      return;
+    }
+
+    if (type === "remote") {
+      onChange({ ...state, locationTypes: ["remote"] });
+    } else if (type === "hybrid") {
+      onChange({ ...state, locationTypes: ["remote", "hybrid"] });
+    } else if (type === "onsite") {
+      onChange({ ...state, locationTypes: ["remote", "hybrid", "onsite"] });
+    }
   };
 
   const addLocation = (city: string) => {
     if (preferredLocations.length >= 5) return;
     if (!preferredLocations.includes(city)) {
-      setPreferredLocations([...preferredLocations, city]);
+      onChange({ ...state, preferredLocations: [...preferredLocations, city] });
       setLocationSearch("");
     }
   };
 
   const removeLocation = (city: string) => {
-    setPreferredLocations(preferredLocations.filter((loc) => loc !== city));
+    onChange({
+      ...state,
+      preferredLocations: preferredLocations.filter((loc) => loc !== city),
+    });
   };
 
   const filteredCities = indianCities.filter((city) =>
     city.toLowerCase().includes(locationSearch.toLowerCase())
   );
 
+  useEffect(() => {
+    const validLocationType = locationTypes.length > 0;
+    const validLaptop = hasLaptop === "yes" || hasLaptop === "no";
+    onValidityChange(validLocationType && validLaptop);
+  }, [locationTypes, hasLaptop, onValidityChange]);
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <SectionTitle
         title="Location Preferences"
-        subtitle=""
+        subtitle="Help us match you with internships that fit your location preferences and availability."
       />
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         <label className="text-xs md:text-sm font-medium text-foreground">
-          Internship Location Types (select multiple):
+          Internship Location Types<span className="text-destructive ml-0.5">*</span>
+          <span className="text-xs text-muted-foreground ml-2">(select at least one)</span>
         </label>
-        <div className="flex gap-3">
-          <Toggle
-            pressed={locationTypes.includes("remote")}
-            onPressedChange={() => toggleLocationType("remote")}
-            className="h-10 md:h-11 px-4 rounded-lg text-sm"
-            style={{
-              backgroundColor: locationTypes.includes("remote") ? '#0E6049' : undefined,
-              color: locationTypes.includes("remote") ? 'white' : undefined,
-            }}
-          >
-            Remote
-          </Toggle>
-          <Toggle
-            pressed={locationTypes.includes("hybrid")}
-            onPressedChange={() => toggleLocationType("hybrid")}
-            className="h-10 md:h-11 px-4 rounded-lg text-sm"
-            style={{
-              backgroundColor: locationTypes.includes("hybrid") ? '#0E6049' : undefined,
-              color: locationTypes.includes("hybrid") ? 'white' : undefined,
-            }}
-          >
-            Hybrid or Onsite
-          </Toggle>
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox
+              checked={locationTypes.includes("remote")}
+              onCheckedChange={() => toggleLocationType("remote")}
+            />
+            <span className="flex items-center gap-1.5">
+              <Globe className="w-4 h-4" />
+              <span>Remote</span>
+            </span>
+          </label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox
+              checked={locationTypes.includes("hybrid")}
+              onCheckedChange={() => toggleLocationType("hybrid")}
+            />
+            <span className="flex items-center gap-1.5">
+              <MapPin className="w-4 h-4" />
+              <span>Hybrid</span>
+            </span>
+          </label>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <Checkbox
+              checked={locationTypes.includes("onsite")}
+              onCheckedChange={() => toggleLocationType("onsite")}
+            />
+            <span className="flex items-center gap-1.5">
+              <MapPin className="w-4 h-4" />
+              <span>Onsite</span>
+            </span>
+          </label>
         </div>
+
+      
+
+        {locationTypes.length === 0 && (
+          <p className="text-[11px] text-destructive">Please select at least one location type</p>
+        )}
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         <label className="text-xs md:text-sm font-medium text-foreground">
-          Preferred Locations (up to 5)
+          Preferred Locations
+          <span className="text-xs text-muted-foreground ml-2">(up to 5 cities)</span>
         </label>
         <Popover>
           <PopoverTrigger asChild>
             <Button
               variant="outline"
               role="combobox"
-              className="w-full h-10 md:h-11 justify-between rounded-lg text-sm font-normal"
+              className="w-full h-11 justify-between rounded-xl text-sm font-normal border-2 hover:border-[#0E6049]/50 transition-colors"
               disabled={preferredLocations.length >= 5}
             >
-              <span className="text-muted-foreground">
+              <span className="text-muted-foreground flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
                 {preferredLocations.length >= 5 ? "Maximum 5 locations selected" : "Search Indian cities..."}
               </span>
               <UploadCloud className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -2040,13 +2798,14 @@ function StepLocationPreferences() {
               <Badge
                 key={city}
                 variant="secondary"
-                className="px-3 py-1 text-xs flex items-center gap-1.5"
+                className="px-3 py-1.5 text-xs flex items-center gap-1.5 bg-[#0E6049]/10 text-[#0E6049] border border-[#0E6049]/20 hover:bg-[#0E6049]/20 transition-colors"
               >
+                <MapPin className="w-3 h-3" />
                 {city}
                 <button
                   type="button"
                   onClick={() => removeLocation(city)}
-                  className="ml-1 hover:text-destructive"
+                  className="ml-1 hover:text-destructive transition-colors"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -2054,44 +2813,239 @@ function StepLocationPreferences() {
             ))}
           </div>
         )}
+        {preferredLocations.length === 0 && (
+          <p className="text-[11px] text-muted-foreground">Select cities where you'd prefer to work</p>
+        )}
       </div>
 
-      <div className="space-y-2">
-        <label className="text-xs md:text-sm font-medium text-foreground">
+      <div className="space-y-3 p-4 rounded-xl border-2 border-border bg-card/50">
+        <label className="text-xs md:text-sm font-medium text-foreground flex items-center gap-2">
+          <Laptop className="w-4 h-4" />
           Do you have a laptop?
         </label>
-        <RadioGroup value={hasLaptop} onValueChange={setHasLaptop}>
-          <div className="flex gap-4">
+        <RadioGroup
+          value={hasLaptop}
+          onValueChange={(value) => onChange({ ...state, hasLaptop: value })}
+        >
+          <div className="flex gap-6">
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="yes" id="laptop-yes" />
+              <RadioGroupItem value="yes" id="laptop-yes" className="border-2" />
               <Label htmlFor="laptop-yes" className="text-sm font-normal cursor-pointer">
-                Yes
+                Yes, I have a laptop
               </Label>
             </div>
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="no" id="laptop-no" />
+              <RadioGroupItem value="no" id="laptop-no" className="border-2" />
               <Label htmlFor="laptop-no" className="text-sm font-normal cursor-pointer">
-                No
+                No, I don't have a laptop
               </Label>
             </div>
           </div>
         </RadioGroup>
+        {!hasLaptop && (
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Some remote internships may require you to have your own laptop
+          </p>
+        )}
       </div>
 
-      <div className="flex justify-center pt-2">
-        <Button
-          type="button"
-          className="px-8 text-sm rounded-full"
-          style={{ backgroundColor: '#0E6049' }}
-        >
-          Save
-        </Button>
-      </div>
     </div>
   );
 }
 
-function StepProfilePreview() {
+function FinishOnboardingButton({
+  aboutMe,
+  academicsData,
+  experienceData,
+  skills,
+  languagesData,
+  extracurricularData,
+  locationPrefs,
+  onSuccess,
+}: {
+  aboutMe: AboutMeForm;
+  academicsData: any;
+  experienceData: any[];
+  skills: SkillEntry[];
+  languagesData: any[];
+  extracurricularData: any[];
+  locationPrefs: LocationPreferencesState;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleFinish = async () => {
+    setIsSaving(true);
+    try {
+      // Get userId from localStorage (set during signup)
+      let userId = localStorage.getItem("userId");
+      console.log("handleFinish: Initial userId check:", userId);
+
+      // If no userId, try to recover from email
+      if (!userId) {
+        const userEmail = localStorage.getItem("userEmail");
+        if (userEmail) {
+          console.log("Attempting to recover userId from email:", userEmail);
+          try {
+            const response = await apiRequest("GET", `/api/auth/user/by-email/${encodeURIComponent(userEmail)}`);
+            const data = await response.json();
+            if (data.user?.id) {
+              userId = data.user.id;
+              console.log("Successfully recovered userId:", userId);
+              localStorage.setItem("userId", userId);
+            }
+          } catch (err) {
+            console.error("Failed to recover userId:", err);
+          }
+        }
+      }
+
+      if (!userId) {
+        console.error("UserId not found in localStorage. Available keys:", Object.keys(localStorage));
+        toast({
+          title: "User not found",
+          description: "Please sign up first before completing onboarding. If you just signed up, try refreshing the page.",
+          variant: "destructive",
+        });
+        setIsSaving(false);
+        return;
+      }
+      console.log("Using userId for onboarding:", userId);
+
+      const onboardingData = {
+        userId,
+        linkedinUrl: aboutMe.linkedinUrl || null,
+        pinCode: aboutMe.pinCode || null,
+        state: aboutMe.state || null,
+        city: aboutMe.city || null,
+        aadhaarNumber: aboutMe.aadhaarNumber || null,
+        panNumber: aboutMe.panNumber || null,
+        bio: aboutMe.bio || null,
+        experienceJson: experienceData || [],
+        skills: skills || [],
+        locationTypes: locationPrefs.locationTypes || [],
+        preferredLocations: locationPrefs.preferredLocations || [],
+        hasLaptop: locationPrefs.hasLaptop === "yes" ? true : locationPrefs.hasLaptop === "no" ? false : null,
+        previewSummary: aboutMe.bio || "",
+        extraData: {
+          academics: academicsData,
+          languages: languagesData,
+          extracurricular: extracurricularData,
+        },
+      };
+
+      console.log("Onboarding data to send:", onboardingData);
+      console.log("locationTypes type:", typeof onboardingData.locationTypes);
+      console.log("locationTypes value:", onboardingData.locationTypes);
+
+      const response = await apiRequest("POST", "/api/onboarding", onboardingData);
+      const result = await response.json();
+
+      // Send document metadata to backend (intern_document table)
+      if (aboutMe.profilePhoto || aboutMe.introVideo || aboutMe.aadhaarImage || aboutMe.panImage) {
+        const documentsPayload = {
+          userId,
+          profilePhotoName: aboutMe.profilePhoto?.name,
+          profilePhotoType: aboutMe.profilePhoto?.type,
+          profilePhotoSize: aboutMe.profilePhoto?.size,
+          introVideoName: aboutMe.introVideo?.name,
+          introVideoType: aboutMe.introVideo?.type,
+          introVideoSize: aboutMe.introVideo?.size,
+          aadhaarImageName: aboutMe.aadhaarImage?.name,
+          aadhaarImageType: aboutMe.aadhaarImage?.type,
+          aadhaarImageSize: aboutMe.aadhaarImage?.size,
+          panImageName: aboutMe.panImage?.name,
+          panImageType: aboutMe.panImage?.type,
+          panImageSize: aboutMe.panImage?.size,
+        };
+
+        console.log("Document metadata to send:", documentsPayload);
+
+        try {
+          const docRes = await apiRequest("POST", "/api/onboarding/documents", documentsPayload);
+          const docJson = await docRes.json();
+          console.log("Documents metadata saved:", docJson);
+        } catch (docErr) {
+          console.error("Failed to save documents metadata:", docErr);
+        }
+      }
+
+      toast({
+        title: "Onboarding completed!",
+        description: "Your profile has been saved successfully.",
+      });
+
+      onSuccess();
+    } catch (error: any) {
+      toast({
+        title: "Failed to save onboarding",
+        description: error.message || "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Button
+      type="button"
+      className="px-6 text-xs md:text-sm rounded-full"
+      style={{ backgroundColor: '#0E6049' }}
+      onClick={handleFinish}
+      disabled={isSaving}
+    >
+      {isSaving ? (
+        <>
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          Saving...
+        </>
+      ) : (
+        "Finish & View Opportunities"
+      )}
+    </Button>
+  );
+}
+
+function StepProfilePreview({
+  aboutMe,
+  academicsData,
+  experienceData,
+  skills,
+  languagesData,
+  extracurricularData,
+  locationPrefs,
+}: {
+  aboutMe: AboutMeForm;
+  academicsData: any;
+  experienceData: any[];
+  skills: SkillEntry[];
+  languagesData: any[];
+  extracurricularData: any[];
+  locationPrefs: LocationPreferencesState;
+}) {
+  const primarySkills = skills.slice(0, 6).map((s) => s.name);
+  const locationSummary =
+    locationPrefs.preferredLocations.length > 0
+      ? locationPrefs.preferredLocations.join(", ")
+      : aboutMe.city || "";
+
+  const fullName = `${aboutMe.firstName || ""} ${aboutMe.lastName || ""}`.trim() || "Your Name";
+  const contactPhone = aboutMe.phone ? `${aboutMe.phoneCountryCode} ${aboutMe.phone}` : "Phone";
+  const contactEmail = aboutMe.email || "Email";
+  const contactCity = locationSummary || aboutMe.city || "City";
+
+  const educationText = academicsData
+    ? `${academicsData.degree || ""}${academicsData.institution ? ` from ${academicsData.institution}` : ""}${academicsData.endYear ? ` (${academicsData.endYear})` : ""}`.trim()
+    : "Your latest degree, college, graduation year and key academic details will show here.";
+
+  const locationTypesText = locationPrefs.locationTypes.length > 0
+    ? locationPrefs.locationTypes.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(", ")
+    : "";
+
+  const hasLaptopText = locationPrefs.hasLaptop === "yes" ? "Yes" : locationPrefs.hasLaptop === "no" ? "No" : "";
+
   return (
     <div className="space-y-5">
       <SectionTitle
@@ -2103,10 +3057,22 @@ function StepProfilePreview() {
         {/* Sidebar summary */}
         <div className="rounded-2xl bg-foreground text-foreground-foreground/90 text-white px-5 py-6 space-y-4">
           <div className="flex flex-col items-start gap-3">
-            <div className="h-16 w-16 rounded-full bg-card/20" />
+            {aboutMe.profilePhoto ? (
+              <img
+                src={URL.createObjectURL(aboutMe.profilePhoto)}
+                alt="Profile"
+                className="h-16 w-16 rounded-full object-cover border-2 border-white/20"
+              />
+            ) : (
+              <div className="h-16 w-16 rounded-full bg-card/20 flex items-center justify-center">
+                <span className="text-white/60 text-xs">Photo</span>
+              </div>
+            )}
             <div>
-              <div className="text-base font-semibold">Your Name</div>
-              <div className="text-xs text-white/70">Student · Location</div>
+              <div className="text-base font-semibold">{fullName}</div>
+              <div className="text-xs text-white/70">
+                Student{locationSummary ? ` · ${locationSummary}` : ""}
+              </div>
             </div>
           </div>
 
@@ -2115,14 +3081,18 @@ function StepProfilePreview() {
               <div className="font-semibold uppercase tracking-[0.18em] text-[11px] mb-1.5">
                 Contact
               </div>
-              <p className="text-white/80">Phone • Email • City</p>
+              <p className="text-white/80">
+                {contactPhone} • {contactEmail} • {contactCity}
+              </p>
             </div>
             <div>
               <div className="font-semibold uppercase tracking-[0.18em] text-[11px] mb-1.5">
                 Skills
               </div>
               <p className="text-white/80">
-                A quick list of your key skills and strengths so companies can scan your profile fast.
+                {primarySkills.length > 0
+                  ? primarySkills.join(" · ")
+                  : "A quick list of your key skills and strengths so companies can scan your profile fast."}
               </p>
             </div>
           </div>
@@ -2133,25 +3103,68 @@ function StepProfilePreview() {
           <div>
             <h3 className="text-sm md:text-base font-semibold mb-1">Summary</h3>
             <p className="text-xs md:text-sm text-muted-foreground">
-              Once you complete the steps, we’ll generate a clean summary that highlights your education, skills, and
-              interests for recruiters.
+              {aboutMe.bio
+                ? aboutMe.bio
+                : "Once you complete the steps, we’ll generate a clean summary that highlights your education, skills, and interests for recruiters."}
             </p>
           </div>
 
           <div>
             <h3 className="text-sm md:text-base font-semibold mb-1">Education</h3>
-            <p className="text-xs md:text-sm text-muted-foreground">
-              Your latest degree, college, graduation year and key academic details will show here.
-            </p>
+            <p className="text-xs md:text-sm text-muted-foreground">{educationText}</p>
           </div>
 
+          {experienceData && experienceData.length > 0 && (
+            <div>
+              <h3 className="text-sm md:text-base font-semibold mb-1">Experience</h3>
+              <div className="space-y-2">
+                {experienceData.map((exp, idx) => (
+                  <div key={idx} className="text-xs md:text-sm text-muted-foreground">
+                    <span className="font-medium">{exp.role}</span>
+                    {exp.company && ` at ${exp.company}`}
+                    {exp.from && exp.to && ` (${exp.from} - ${exp.to})`}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
-            <h3 className="text-sm md:text-base font-semibold mb-1">Additional details</h3>
-            <p className="text-xs md:text-sm text-muted-foreground">
-              Things like your preferred locations, availability, and extra‑curriculars will be neatly organised so that
-              companies can quickly understand you.
-            </p>
+            <h3 className="text-sm md:text-base font-semibold mb-1">Location & Preferences</h3>
+            <div className="space-y-2 text-xs md:text-sm text-muted-foreground">
+              {locationTypesText && (
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4" />
+                  <span>Location Types: {locationTypesText}</span>
+                </div>
+              )}
+              {locationPrefs.preferredLocations.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  <span>Preferred: {locationPrefs.preferredLocations.join(", ")}</span>
+                </div>
+              )}
+              {hasLaptopText && (
+                <div className="flex items-center gap-2">
+                  <Laptop className="w-4 h-4" />
+                  <span>Laptop: {hasLaptopText}</span>
+                </div>
+              )}
+            </div>
           </div>
+
+          {extracurricularData && extracurricularData.length > 0 && (
+            <div>
+              <h3 className="text-sm md:text-base font-semibold mb-1">Extra-Curricular Activities</h3>
+              <div className="space-y-1">
+                {extracurricularData.map((act, idx) => (
+                  <div key={idx} className="text-xs md:text-sm text-muted-foreground">
+                    {act.activity} {act.level && `(${act.level})`}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

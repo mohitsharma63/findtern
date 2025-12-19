@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { AdminLayout } from "@/pages/admin/admin-layout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,11 +37,17 @@ import {
   Edit,
   Trash2,
   Eye,
-  LogOut,
-  Settings,
-  Bell,
 } from "lucide-react";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import { Bar, BarChart, Line, LineChart, ResponsiveContainer, TooltipProps, XAxis, YAxis } from "recharts";
+
 
 export default function AdminDashboardPage() {
   const [, setLocation] = useLocation();
@@ -121,39 +128,49 @@ export default function AdminDashboardPage() {
     return matchesSearch && matchesFilter;
   });
 
+  const applicationsTrendData = [
+    { month: "Jul", applications: 120, interviews: 45 },
+    { month: "Aug", applications: 160, interviews: 60 },
+    { month: "Sep", applications: 210, interviews: 80 },
+    { month: "Oct", applications: 190, interviews: 78 },
+    { month: "Nov", applications: 230, interviews: 95 },
+    { month: "Dec", applications: 260, interviews: 110 },
+  ];
+
+  const funnelData = [
+    { stage: "Signups", value: 1248 },
+    { stage: "Profile Complete", value: 980 },
+    { stage: "Applied", value: 620 },
+    { stage: "Interviewed", value: 210 },
+    { stage: "Selected", value: 74 },
+  ];
+
+  const trendConfig: ChartConfig = {
+    applications: {
+      label: "Applications",
+      color: "hsl(152, 61%, 40%)",
+    },
+    interviews: {
+      label: "Interviews",
+      color: "hsl(217, 91%, 60%)",
+    },
+  };
+
+  const funnelConfig: ChartConfig = {
+    value: {
+      label: "Students",
+      color: "hsl(43, 96%, 56%)",
+    },
+  };
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
-        <div className="container flex h-16 items-center justify-between px-4 md:px-6">
-          <div className="flex items-center gap-2">
-            <img src={findternLogo} alt="Findtern" className="h-8 w-auto" />
-            <span className="text-lg font-semibold text-[#0E6049]">FINDTERN</span>
-            <Badge variant="secondary" className="ml-2">Admin</Badge>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="h-9 w-9">
-              <Bell className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9">
-              <Settings className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setLocation("/admin/login")}
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="container px-4 md:px-6 py-8">
+    <AdminLayout
+      title="Dashboard"
+      description="Monitor key metrics across interns, companies, and projects."
+    >
+      <div className="py-2 space-y-6">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -203,8 +220,95 @@ export default function AdminDashboardPage() {
           </Card>
         </div>
 
+        {/* Analytics row */}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr),minmax(0,1.3fr)]">
+          <Card className="p-6">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Applications vs Interviews
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Last 6 months
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 h-64">
+              <ChartContainer config={trendConfig}>
+                <ResponsiveContainer>
+                  <LineChart data={applicationsTrendData}>
+                    <XAxis
+                      dataKey="month"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      tickFormatter={(v) => `${v}`}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartLegend content={<ChartLegendContent />} />
+                    <Line
+                      type="monotone"
+                      dataKey="applications"
+                      stroke="var(--color-applications)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="interviews"
+                      stroke="var(--color-interviews)"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </div>
+          </Card>
+
+          <Card className="p-6">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Intern Conversion Funnel
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  From signup to selection
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 h-64">
+              <ChartContainer config={funnelConfig}>
+                <ResponsiveContainer>
+                  <BarChart data={funnelData} layout="vertical" margin={{ left: 60 }}>
+                    <XAxis type="number" hide />
+                    <YAxis
+                      dataKey="stage"
+                      type="category"
+                      tickLine={false}
+                      axisLine={false}
+                      width={90}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                    <Bar
+                      dataKey="value"
+                      radius={[0, 4, 4, 0]}
+                      fill="var(--color-value)"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </div>
+          </Card>
+        </div>
+
         {/* Users Management */}
-        <Card className="mb-8">
+        <Card>
           <div className="p-6 border-b">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">User Management</h2>
@@ -364,6 +468,6 @@ export default function AdminDashboardPage() {
           </div>
         </Card>
       </div>
-    </div>
+    </AdminLayout>
   );
 }
