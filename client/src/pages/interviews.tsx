@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,39 +27,95 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import { useToast } from "@/hooks/use-toast";
 
 export default function InterviewsPage() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [openToWork, setOpenToWork] = useState(false);
+  const [interviews, setInterviews] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectingId, setSelectingId] = useState<string | null>(null);
 
-  // Static interview data
-  const interviews = [
-    {
-      id: 1,
-      company: "wafflebite",
-      contact: "somil",
-      location: "jaipur, Rajasthan",
-    },
-    {
-      id: 2,
-      company: "somil",
-      scope: "Long-Term",
-      location: "Remote",
-      fullTimePossible: "No",
-      status: "rescheduled",
-      message: "New date requested. Please wait for updated timings.",
-    },
-    {
-      id: 3,
-      company: "TISHA",
-      scope: "Short-Term",
-      location: "Remote",
-      fullTimePossible: "No",
-      status: "scheduled",
-      date: "12/16/2025, 12:00:00 AM",
-      meetingLink: "https://meet.example.com/abc123",
-    },
-  ];
+  // Use logged-in intern's userId stored by login/signup flow
+  const internId = (typeof window !== "undefined" && window.localStorage.getItem("userId")) || "";
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        if (!internId) {
+          setLoading(false);
+          return;
+        }
+
+        const res = await fetch(`/api/intern/${internId}/interviews`);
+        if (!res.ok) {
+          throw new Error("Failed to load interviews");
+        }
+        const json = await res.json();
+        setInterviews(json.interviews || []);
+      } catch (error) {
+        console.error("Load interviews error", error);
+        toast({
+          title: "Could not load interviews",
+          description: "Something went wrong while fetching your interviews.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, [internId, toast]);
+
+  const formatSlot = (slot: string | null | undefined) => {
+    if (!slot) return null;
+    const d = new Date(slot);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  };
+
+  const handleSelectSlot = async (interviewId: string, slot: number) => {
+    try {
+      setSelectingId(interviewId + "-" + slot);
+
+      const res = await fetch(`/api/interviews/${interviewId}/select-slot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slot }),
+      });
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        const message = json?.message || "Failed to confirm slot";
+        throw new Error(message);
+      }
+
+      const { interview } = await res.json();
+
+      setInterviews((prev) =>
+        prev.map((i) => (i.id === interview.id ? interview : i)),
+      );
+
+      toast({
+        title: "Slot confirmed",
+        description: "Your interview time has been confirmed.",
+      });
+    } catch (error: any) {
+      console.error("Select slot error", error);
+      toast({
+        title: "Could not confirm slot",
+        description: error?.message || "Something went wrong while confirming your interview slot.",
+        variant: "destructive",
+      });
+    } finally {
+      setSelectingId(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -144,75 +200,102 @@ export default function InterviewsPage() {
       <div className="container px-4 md:px-6 py-8">
         <h1 className="text-2xl font-bold text-[#0E6049] mb-6">My Interviews</h1>
 
-        <div className="space-y-4">
-          {interviews.map((interview, index) => (
-            <div key={interview.id}>
-              <Card className="p-6">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">{interview.company}</h3>
-                    {interview.contact && (
-                      <p className="text-sm text-muted-foreground">Contact: {interview.contact}</p>
-                    )}
-                    <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                      {interview.location && (
-                        <div className="flex items-center gap-1">
-                          <MapPin className="h-4 w-4" />
-                          <span>{interview.location}</span>
-                        </div>
-                      )}
-                      {interview.scope && (
-                        <span>Scope: {interview.scope}</span>
-                      )}
-                      {interview.fullTimePossible && (
-                        <span>Full-time Possible: {interview.fullTimePossible}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Status Messages */}
-                  {interview.status === "rescheduled" && (
-                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                      <div className="flex items-center gap-2">
-                        <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                        <span className="text-sm text-yellow-800 dark:text-yellow-200">
-                          {interview.message}
-                        </span>
+        {loading ? (
+          <div className="text-sm text-muted-foreground">Loading your interviews...</div>
+        ) : interviews.length === 0 ? (
+          <Card className="p-6">
+            <p className="text-sm text-muted-foreground">You don't have any interviews yet.</p>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {interviews.map((interview, index) => (
+              <div key={interview.id}>
+                <Card className="p-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-lg font-semibold mb-1">
+                          {interview.employerName || "Company"}
+                        </h3>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          <span>{interview.timezone || "Employer timezone"}</span>
+                        </p>
                       </div>
+                      <Badge variant="outline" className="text-xs">
+                        {interview.status || "pending"}
+                      </Badge>
                     </div>
-                  )}
 
-                  {interview.status === "scheduled" && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                            Scheduled Interview
-                          </span>
-                        </div>
-                        <div className="text-sm text-blue-700 dark:text-blue-300 pl-6">
-                          <div>Date: {interview.date}</div>
-                          <div className="mt-1">
-                            <Button
-                              variant="link"
-                              className="h-auto p-0 text-blue-600 dark:text-blue-400 hover:underline"
-                              onClick={() => window.open(interview.meetingLink, '_blank')}
-                            >
-                              <Video className="h-4 w-4 mr-1 inline" />
-                              Join Meeting
-                            </Button>
+                    {/* Slots */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        <span>Available Slots (shown in your local time)</span>
+                      </p>
+
+                      {([1, 2, 3] as const).map((n) => {
+                        const key = `slot${n}` as const;
+                        const label = formatSlot(interview[key]);
+                        if (!label) return null;
+
+                        const isSelected = interview.selectedSlot === n;
+                        const isPending = interview.status === "pending";
+                        const selectKey = interview.id + "-" + n;
+
+                        return (
+                          <div
+                            key={n}
+                            className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-[10px]">
+                                Slot {n}
+                              </Badge>
+                              <span>{label}</span>
+                            </div>
+
+                            {isSelected ? (
+                              <span className="flex items-center gap-1 text-xs text-emerald-600 font-semibold">
+                                <CheckCircle2 className="h-3 w-3" /> Confirmed
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!isPending || selectingId === selectKey}
+                                onClick={() => handleSelectSlot(interview.id, n)}
+                              >
+                                {selectingId === selectKey ? "Confirming..." : "Choose this time"}
+                              </Button>
+                            )}
                           </div>
-                        </div>
-                      </div>
+                        );
+                      })}
                     </div>
-                  )}
-                </div>
-              </Card>
-              {index < interviews.length - 1 && <Separator className="my-4" />}
-            </div>
-          ))}
-        </div>
+
+                    {/* Meeting link (only after candidate has selected a slot) */}
+                    {interview.status === "scheduled" &&
+                      !!interview.selectedSlot &&
+                      !!interview.meetingLink && (
+                      <div className="pt-2 border-t mt-2">
+                        <Button
+                          variant="ghost"
+                          className="h-auto p-0 text-[#0E6049] hover:underline"
+                          onClick={() => window.open(interview.meetingLink, "_blank")}
+                        >
+                          <Video className="h-4 w-4 mr-1 inline" />
+                          Join Meeting
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+                {index < interviews.length - 1 && <Separator className="my-4" />}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

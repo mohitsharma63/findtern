@@ -18,7 +18,7 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
 
 const loginSchema = z.object({
@@ -31,6 +31,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -45,7 +46,32 @@ export default function LoginPage() {
       const response = await apiRequest("POST", "/api/auth/login", data);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: async (data: any) => {
+      const user = data?.user;
+
+      if (user?.id) {
+        try {
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("userId", user.id);
+            if (user.email) {
+              window.localStorage.setItem("userEmail", user.email);
+            }
+          }
+
+          const res = await fetch(`/api/onboarding/${user.id}`);
+
+          if (res.ok) {
+            setLocation("/dashboard");
+          } else if (res.status === 404) {
+            setLocation("/onboarding-loading");
+          } else {
+            setLocation("/dashboard");
+          }
+        } catch {
+          setLocation("/onboarding-loading");
+        }
+      }
+
       toast({
         title: "Welcome back!",
         description: "You have successfully logged in.",

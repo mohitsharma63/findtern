@@ -3,6 +3,8 @@ import { pgTable, text, varchar, boolean, integer, timestamp, jsonb } from "driz
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Interviews & proposals share timezone list
+
 // --------------------------------------------------
 // User (Intern) Schema
 // --------------------------------------------------
@@ -280,6 +282,30 @@ export const timezones = [
 ] as const;
 
 // --------------------------------------------------
+// Interviews Schema
+// --------------------------------------------------
+
+export const interviews = pgTable("interviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employerId: varchar("employer_id").notNull(),
+  internId: varchar("intern_id").notNull(),
+  projectId: varchar("project_id"),
+  status: text("status").notNull().default("pending"),
+  slot1: timestamp("slot1"),
+  slot2: timestamp("slot2"),
+  slot3: timestamp("slot3"),
+  selectedSlot: integer("selected_slot"),
+  timezone: text("timezone"),
+  meetingLink: text("meeting_link"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type Interview = typeof interviews.$inferSelect;
+export type InsertInterview = typeof interviews.$inferInsert;
+
+// --------------------------------------------------
 // Intern Onboarding Schema
 // --------------------------------------------------
 export const internOnboarding = pgTable("intern_onboarding", {
@@ -348,3 +374,34 @@ export const insertInternDocumentsSchema = createInsertSchema(internDocuments).o
 
 export type InsertInternDocuments = z.infer<typeof insertInternDocumentsSchema>;
 export type InternDocuments = typeof internDocuments.$inferSelect;
+// --------------------------------------------------
+// Proposals (Employer -> Intern offers)
+// --------------------------------------------------
+export const proposals = pgTable("proposals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employerId: varchar("employer_id").notNull(),
+  internId: varchar("intern_id").notNull(),
+  projectId: varchar("project_id").notNull(),
+  interviewId: varchar("interview_id"),
+  flowType: text("flow_type").notNull(), // direct | interview_first
+  status: text("status").notNull().default("sent"), // draft | sent | accepted | rejected | interview_scheduled
+  offerDetails: jsonb("offer_details").$type<Record<string, any>>().default({}),
+  aiRatings: jsonb("ai_ratings").$type<{
+    communication?: number;
+    coding?: number;
+    aptitude?: number;
+    overall?: number;
+  }>().default({}),
+  skills: jsonb("skills").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertProposalSchema = createInsertSchema(proposals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertProposal = z.infer<typeof insertProposalSchema>;
+export type Proposal = typeof proposals.$inferSelect;

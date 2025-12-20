@@ -131,3 +131,37 @@ CREATE TABLE IF NOT EXISTS intern_document (
 ALTER TABLE employers
   ADD COLUMN IF NOT EXISTS setup_completed boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS onboarding_completed boolean NOT NULL DEFAULT false;
+
+-- Hiring Proposals (employer -> intern offers)
+CREATE TABLE IF NOT EXISTS proposals (
+  id           varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  employer_id  varchar NOT NULL REFERENCES employers(id) ON DELETE CASCADE,
+  intern_id    varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id   varchar NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  interview_id varchar, -- optional link to interviews.id
+  flow_type    text    NOT NULL, -- 'direct' | 'interview_first'
+  status       text    NOT NULL DEFAULT 'sent', -- draft | sent | accepted | rejected | interview_scheduled
+  offer_details jsonb  DEFAULT '{}'::jsonb,
+  ai_ratings    jsonb  DEFAULT '{}'::jsonb,
+  skills        jsonb  DEFAULT '[]'::jsonb,
+  created_at   timestamp DEFAULT now(),
+  updated_at   timestamp DEFAULT now()
+);
+
+-- Interview bookings between employers and interns
+CREATE TABLE IF NOT EXISTS interviews (
+  id            varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  employer_id   varchar NOT NULL REFERENCES employers(id) ON DELETE CASCADE,
+  intern_id     varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id    varchar REFERENCES projects(id) ON DELETE SET NULL,
+  status        text NOT NULL DEFAULT 'pending', -- pending | scheduled | completed | cancelled
+  slot1         timestamp,
+  slot2         timestamp,
+  slot3         timestamp,
+  selected_slot integer, -- 1,2,3 when candidate picks a slot
+  timezone      text,
+  meeting_link  text,
+  notes         text,
+  created_at    timestamp DEFAULT now(),
+  updated_at    timestamp DEFAULT now()
+);

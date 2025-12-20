@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useLocation, useRoute } from "wouter";
 import { MapPin, ArrowLeft, Laptop, Globe } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
@@ -30,17 +31,19 @@ type InternProfile = {
     hasLaptop: boolean;
   };
   languages: string[];
+  profilePhotoName?: string | null;
 };
 
 export default function EmployerInternDetailPage() {
   const [, setLocation] = useLocation();
   const [, params] = useRoute("/employer/intern/:id");
+  const internId = params?.id;
   const [loading, setLoading] = useState(true);
   const [intern, setIntern] = useState<InternProfile | null>(null);
 
   useEffect(() => {
     const load = async () => {
-      if (!params?.id) {
+      if (!internId) {
         setLoading(false);
         return;
       }
@@ -54,7 +57,7 @@ export default function EmployerInternDetailPage() {
           const onboarding = item.onboarding ?? {};
           const user = item.user ?? {};
           const id = user.id ?? onboarding.userId ?? onboarding.id ?? "";
-          return id === params.id;
+          return id === internId;
         });
 
         if (!match) {
@@ -64,6 +67,7 @@ export default function EmployerInternDetailPage() {
 
         const onboarding = match.onboarding ?? {};
         const user = match.user ?? {};
+        const documents = match.documents ?? {};
 
         const rawSkills = Array.isArray(onboarding.skills) ? onboarding.skills : [];
         const skills: string[] = rawSkills
@@ -92,7 +96,7 @@ export default function EmployerInternDetailPage() {
         const extra = onboarding.extraData ?? {};
 
         const profile: InternProfile = {
-          id: params.id,
+          id: internId,
           initials,
           name,
           location: locationParts || "",
@@ -150,6 +154,7 @@ export default function EmployerInternDetailPage() {
                 })
                 .filter((v: string) => v && v.trim().length > 0)
             : [],
+          profilePhotoName: documents.profilePhotoName ?? null,
         };
 
         setIntern(profile);
@@ -162,7 +167,7 @@ export default function EmployerInternDetailPage() {
     };
 
     load();
-  }, [params]);
+  }, [internId]);
 
   if (loading) {
     return (
@@ -202,8 +207,18 @@ export default function EmployerInternDetailPage() {
         {/* Summary header */}
         <Card className="p-6 md:p-8 rounded-2xl shadow-sm bg-white">
           <div className="flex flex-col md:flex-row md:items-start gap-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center text-2xl font-bold">
-              {intern.initials}
+            <div className="w-16 h-16">
+              <Avatar className="w-16 h-16 rounded-2xl">
+                {intern.profilePhotoName ? (
+                  <AvatarImage
+                    src={`/uploads/${intern.profilePhotoName}`}
+                    alt={intern.name}
+                  />
+                ) : null}
+                <AvatarFallback className="rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white text-2xl font-bold">
+                  {intern.initials}
+                </AvatarFallback>
+              </Avatar>
             </div>
             <div className="flex-1 space-y-2">
               <h1 className="text-2xl font-semibold text-slate-900">{intern.name}</h1>

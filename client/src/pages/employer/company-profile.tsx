@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -44,6 +44,9 @@ import { companySizes } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import { apiRequest } from "@/lib/queryClient";
+import { getEmployerAuth, saveEmployerAuth } from "@/lib/employerAuth";
+import { EmployerHeader } from "@/components/employer/EmployerHeader";
 
 // Basic Info Schema
 const basicInfoSchema = z.object({
@@ -88,13 +91,13 @@ export default function CompanyProfilePage() {
   const basicForm = useForm({
     resolver: zodResolver(basicInfoSchema),
     defaultValues: {
-      companyName: "neograma",
+      companyName: "",
       websiteUrl: "",
-      companyEmail: "aditya5040@neograma.com",
+      companyEmail: "",
       companySize: "",
       city: "",
       state: "",
-      primaryContactName: "ram",
+      primaryContactName: "",
       primaryContactRole: "",
       escalationContactName: "",
       escalationContactEmail: "",
@@ -115,10 +118,107 @@ export default function CompanyProfilePage() {
     },
   });
 
-  const handleBasicInfoSave = async (data: z.infer<typeof basicInfoSchema>) => {
+  // Load employer profile from backend when page mounts
+  useEffect(() => {
+    const load = async () => {
+      const auth = getEmployerAuth();
+      if (!auth) {
+        setLocation("/employer/login");
+        return;
+      }
+
+      try {
+        const response = await apiRequest("GET", `/api/employer/${auth.id}`);
+        const json = await response.json();
+
+        if (!response.ok || !json?.employer) return;
+
+        const employer = json.employer as any;
+
+        basicForm.reset({
+          companyName: employer.companyName ?? "",
+          websiteUrl: employer.websiteUrl ?? "",
+          companyEmail: employer.companyEmail ?? "",
+          companySize: employer.companySize ?? "",
+          city: employer.city ?? "",
+          state: employer.state ?? "",
+          primaryContactName: employer.primaryContactName ?? "",
+          primaryContactRole: employer.primaryContactRole ?? "",
+          escalationContactName: employer.escalationContactName ?? "",
+          escalationContactEmail: employer.escalationContactEmail ?? "",
+          escalationContactPhone: employer.escalationContactPhone ?? "",
+          escalationContactRole: employer.escalationContactRole ?? "",
+        });
+
+        billingForm.reset({
+          bankName: employer.bankName ?? "",
+          accountNumber: employer.accountNumber ?? "",
+          accountHolderName: employer.accountHolderName ?? "",
+          ifscCode: employer.ifscCode ?? "",
+          swiftCode: employer.swiftCode ?? "",
+          gstNumber: employer.gstNumber ?? "",
+        });
+
+        // keep local auth in sync so header etc. show latest name/company
+        saveEmployerAuth(employer);
+      } catch (error) {
+        // silent fail; user can still edit manually
+        console.error("Failed to load employer profile", error);
+      }
+    };
+
+    load();
+  }, [basicForm, billingForm, setLocation]);
+
+  const saveProfileToBackend = async () => {
+    const auth = getEmployerAuth();
+    if (!auth) {
+      setLocation("/employer/login");
+      return;
+    }
+
+    const basic = basicForm.getValues();
+    const billing = billingForm.getValues();
+
     setIsSaving(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const payload = {
+        companyName: basic.companyName,
+        websiteUrl: basic.websiteUrl,
+        companyEmail: basic.companyEmail,
+        companySize: basic.companySize,
+        city: basic.city,
+        state: basic.state,
+        primaryContactName: basic.primaryContactName,
+        primaryContactRole: basic.primaryContactRole,
+        secondaryContactName: basic.escalationContactName,
+        secondaryContactEmail: basic.escalationContactEmail,
+        secondaryContactPhone: basic.escalationContactPhone,
+        secondaryContactRole: basic.escalationContactRole,
+        bankName: billing.bankName,
+        accountNumber: billing.accountNumber,
+        accountHolderName: billing.accountHolderName,
+        ifscCode: billing.ifscCode,
+        swiftCode: billing.swiftCode,
+        gstNumber: billing.gstNumber,
+      };
+
+      const response = await apiRequest("PUT", `/api/employer/${auth.id}/setup`, payload);
+      const json = await response.json();
+
+      if (!response.ok) {
+        toast({
+          title: "Error",
+          description: json?.message || "Failed to save changes.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (json?.employer) {
+        saveEmployerAuth(json.employer);
+      }
+
       toast({
         title: "Profile updated",
         description: "Your company information has been saved.",
@@ -134,85 +234,17 @@ export default function CompanyProfilePage() {
     }
   };
 
-  const handleBillingSave = async (data: z.infer<typeof billingSchema>) => {
-    setIsSaving(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast({
-        title: "Billing updated",
-        description: "Your billing information has been saved.",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to save changes.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
+  const handleBasicInfoSave = async (_data: z.infer<typeof basicInfoSchema>) => {
+    await saveProfileToBackend();
+  };
+
+  const handleBillingSave = async (_data: z.infer<typeof billingSchema>) => {
+    await saveProfileToBackend();
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-teal-50/30">
-      {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-white/80 backdrop-blur-lg">
-        <div className="container flex h-16 items-center justify-between px-4 md:px-8">
-          <div className="flex items-center gap-2">
-            <img src={findternLogo} alt="Findtern" className="h-10 w-auto" />
-            <div className="hidden sm:block">
-              <span className="text-lg font-bold text-emerald-700">FINDTERN</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 md:gap-4">
-            {/* Project Selector */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="h-9 px-3 rounded-lg border-slate-200 gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-500" />
-                  <span className="hidden sm:inline">{selectedProject.name}</span>
-                  <ChevronDown className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {projects.map((project) => (
-                  <DropdownMenuItem 
-                    key={project.id}
-                    onClick={() => setSelectedProject(project)}
-                    className="cursor-pointer"
-                  >
-                    {selectedProject.id === project.id && (
-                      <CheckCircle className="w-4 h-4 mr-2 text-emerald-500" />
-                    )}
-                    {project.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Action buttons */}
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
-              <MessageSquare className="w-4 h-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
-              <Building2 className="w-4 h-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 relative">
-              <ShoppingCart className="w-4 h-4" />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">1</span>
-            </Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg">
-              <Bell className="w-4 h-4" />
-            </Button>
-
-            {/* Profile Avatar */}
-            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-sm font-semibold">
-              N
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/40">
+      <EmployerHeader active="none" />
 
       {/* Content */}
       <div className="container px-4 md:px-8 py-8 max-w-4xl mx-auto">

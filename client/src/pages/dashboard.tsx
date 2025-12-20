@@ -65,6 +65,12 @@ export default function DashboardPage() {
   const { data: onboardingResp } = useQuery({
     queryKey: ["/api/onboarding", storedUserId],
     enabled: !!storedUserId,
+    queryFn: async () => {
+      if (!storedUserId) return null;
+      const res = await fetch(`/api/onboarding/${storedUserId}`);
+      if (!res.ok) throw new Error("Failed to fetch onboarding data");
+      return res.json();
+    },
   });
 
   const { data: userByEmailResp } = useQuery({

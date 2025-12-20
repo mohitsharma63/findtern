@@ -1,32 +1,63 @@
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { Building2, User, CreditCard, HelpCircle, ArrowLeft, ArrowRight, ShoppingBag, Shield, LogOut } from "lucide-react";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import { Building2, User, CreditCard, HelpCircle, ArrowRight, ShoppingBag, Shield, LogOut, Trash2 } from "lucide-react";
+import { EmployerHeader } from "@/components/employer/EmployerHeader";
+import { apiRequest } from "@/lib/queryClient";
+import { getEmployerAuth } from "@/lib/employerAuth";
 
 export default function CompanyAccountPage() {
   const [, setLocation] = useLocation();
+  const [employer, setEmployer] = useState<any | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      const auth = getEmployerAuth();
+      if (!auth) {
+        setLocation("/employer/login");
+        return;
+      }
+
+      try {
+        const res = await apiRequest("GET", `/api/employer/${auth.id}`);
+        const json = await res.json();
+        if (json?.employer) {
+          setEmployer(json.employer);
+        }
+      } catch (error) {
+        console.error("Failed to load employer for company account", error);
+      }
+    };
+
+    load();
+  }, [setLocation]);
+
+  const companyName = employer?.companyName ?? "Company";
+  const companyEmail = employer?.companyEmail ?? "";
+  const cityState = [employer?.city, employer?.state].filter(Boolean).join(", ");
+  const primaryContactName = employer?.primaryContactName ?? "Primary contact";
+  const primaryContactRole = employer?.primaryContactRole ?? "";
+
+  const maskedPhone = (() => {
+    const raw = employer?.phoneNumber as string | undefined;
+    if (!raw) return "";
+    if (raw.length <= 4) return raw;
+    const visible = raw.slice(-4);
+    return `${raw.startsWith("+") ? "" : "+91-"}****${visible}`;
+  })();
+
+  const maskedAccountNumber = (() => {
+    const acc = employer?.accountNumber as string | undefined;
+    if (!acc) return "Not added";
+    if (acc.length <= 4) return `**** ${acc}`;
+    return `**** ${acc.slice(-4)}`;
+  })();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-teal-50/30">
-      {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-white/80 backdrop-blur-lg">
-        <div className="flex h-16 items-center justify-between px-4 md:px-8">
-          <div className="flex items-center gap-2">
-            <img src={findternLogo} alt="Findtern" className="h-9 w-auto" />
-            <span className="hidden sm:inline text-lg font-bold text-emerald-700">FINDTERN</span>
-          </div>
-          <Button
-            variant="ghost"
-            className="h-9 px-3 text-xs flex items-center gap-2 text-slate-600"
-            onClick={() => setLocation("/employer/dashboard")}
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to dashboard
-          </Button>
-        </div>
-      </header>
+      <EmployerHeader active="none" />
 
       <main className="max-w-5xl mx-auto px-4 md:px-8 py-8 md:py-10 space-y-6">
         {/* Page title */}
@@ -37,15 +68,71 @@ export default function CompanyAccountPage() {
           </p>
         </div>
 
+        {/* Company account options list */}
+       
+
         {/* Top summary cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+           <Card className="rounded-2xl bg-white/95 border-slate-200 max-w-xs">
+          <div className="px-4 pt-3 pb-2 text-xs font-medium text-slate-500">Company Account</div>
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => setLocation("/employer/profile")}
+              className="w-full flex items-center gap-2 px-4 py-1.5 text-sm text-slate-800 hover:bg-emerald-50 cursor-pointer text-left"
+            >
+              <Building2 className="w-4 h-4 text-emerald-600" />
+              <span>Company Profile</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLocation("/employer/account/change-password")}
+              className="w-full flex items-center gap-2 px-4 py-1.5 text-sm text-slate-800 hover:bg-slate-50 cursor-pointer text-left"
+            >
+              <Shield className="w-4 h-4 text-slate-600" />
+              <span>Change Password</span>
+            </button>
+            <button
+              type="button"
+              className="w-full flex items-center gap-2 px-4 py-1.5 text-sm text-slate-800 hover:bg-slate-50 cursor-default text-left"
+            >
+              <ShoppingBag className="w-4 h-4 text-slate-700" />
+              <span>Orders (static)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLocation("/employer/shedule")}
+              className="w-full flex items-center gap-2 px-4 py-1.5 text-sm text-slate-800 hover:bg-slate-50 cursor-pointer text-left"
+            >
+              <HelpCircle className="w-4 h-4 text-slate-600" />
+              <span>Help &amp; Support</span>
+            </button>
+            <div className="my-1 border-t border-slate-100" />
+            <button
+              type="button"
+              onClick={() => setLocation("/employer/account/deactivate")}
+              className="w-full flex items-center gap-2 px-4 py-1.5 text-sm text-red-600 hover:bg-red-50 cursor-pointer text-left"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Deactivate Account</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLocation("/employer/login")}
+              className="w-full flex items-center gap-2 px-4 py-1.5 text-sm text-slate-800 hover:bg-slate-50 cursor-pointer text-left"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </Card>
           <Card className="p-4 rounded-2xl bg-white/90 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-emerald-700 text-sm font-medium">
               <Building2 className="w-4 h-4" />
               Company Profile
             </div>
-            <p className="text-sm font-semibold text-slate-900">neograma</p>
-            <p className="text-xs text-slate-600">IT Services · Jaipur, Rajasthan</p>
+            <p className="text-sm font-semibold text-slate-900">{companyName}</p>
+            <p className="text-xs text-slate-600">{cityState || "Update your company location"}</p>
             <Badge variant="outline" className="mt-1 w-max border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px]">
               Verified in Findtern
             </Badge>
@@ -59,7 +146,7 @@ export default function CompanyAccountPage() {
             </Button>
           </Card>
 
-          <Card className="p-4 rounded-2xl bg-white/90 flex flex-col gap-2">
+          {/* <Card className="p-4 rounded-2xl bg-white/90 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-emerald-700 text-sm font-medium">
               <CreditCard className="w-4 h-4" />
               Billing
@@ -67,7 +154,7 @@ export default function CompanyAccountPage() {
             <p className="text-sm font-semibold text-slate-900">Primary plan: Static Demo</p>
             <p className="text-xs text-slate-600">Next billing cycle: 18 Dec 2025</p>
             <Badge variant="outline" className="mt-1 w-max border-amber-200 bg-amber-50 text-amber-700 text-[11px]">
-              Payment method: **** 1234
+              Payment method: {maskedAccountNumber}
             </Badge>
             <Button
               variant="outline"
@@ -76,7 +163,7 @@ export default function CompanyAccountPage() {
             >
               Manage billing (static)
             </Button>
-          </Card>
+          </Card> */}
 
           <Card className="p-4 rounded-2xl bg-white/90 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-emerald-700 text-sm font-medium">
@@ -107,16 +194,19 @@ export default function CompanyAccountPage() {
                 <User className="w-4 h-4 text-emerald-700" />
                 <h2 className="text-sm md:text-base font-semibold text-slate-900">Primary contact</h2>
               </div>
-              <p className="text-sm font-medium text-slate-900">ram</p>
-              <p className="text-xs text-slate-600">HR Manager · neograma</p>
+              <p className="text-sm font-medium text-slate-900">{primaryContactName}</p>
+              <p className="text-xs text-slate-600">
+                {primaryContactRole && `${primaryContactRole} · `}
+                {companyName}
+              </p>
               <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-700">
                 <div>
                   <p className="text-slate-500">Email</p>
-                  <p>aditya5040@neograma.com</p>
+                  <p>{companyEmail || "Not added"}</p>
                 </div>
                 <div>
                   <p className="text-slate-500">Phone</p>
-                  <p>+91-98XXXXXX00</p>
+                  <p>{maskedPhone || "Not added"}</p>
                 </div>
               </div>
             </Card>
@@ -142,8 +232,9 @@ export default function CompanyAccountPage() {
                   variant="outline"
                   size="sm"
                   className="h-8 rounded-full text-xs"
+                  onClick={() => setLocation("/employer/account/change-password")}
                 >
-                  Change password (static)
+                  Change password
                 </Button>
               </div>
             </Card>
@@ -181,8 +272,9 @@ export default function CompanyAccountPage() {
                   variant="outline"
                   size="sm"
                   className="h-8 rounded-full text-xs text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={() => setLocation("/employer/account/deactivate")}
                 >
-                  Deactivate (static)
+                  Deactivate
                 </Button>
                 <Button
                   variant="outline"

@@ -32,12 +32,18 @@ import EmployerSignupPage from "@/pages/employer/employer-signup";
 import EmployerLoginPage from "@/pages/employer/employer-login";
 import EmployerOnboardingPage from "@/pages/employer/employer-onboarding";
 import EmployerDashboardPage from "@/pages/employer/employer-dashboard";
+import EmployerSchedulePage from "@/pages/employer/employer-schedule";
 import CompanyProfilePage from "@/pages/employer/company-profile";
 import CompanySetupPage from "@/pages/employer/company-setup";
 import CompanyAccountPage from "@/pages/employer/company-account";
+import EmployerChangePasswordPage from "@/pages/employer/employer-change-password";
+import EmployerDeactivateAccountPage from "@/pages/employer/employer-deactivate-account";
 import EmployerCartPage from "@/pages/employer/employer-cart";
 import EmployerComparePage from "@/pages/employer/employer-compare";
 import EmployerInternDetailPage from "@/pages/employer/employer-intern-detail";
+import EmployerProposalsPage from "@/pages/employer/employer-proposals";
+import EmployerProposalDetailPage from "@/pages/employer/employer-proposal-detail";
+import EmployerProposalEditPage from "@/pages/employer/employer-proposal-edit-page";
 import { useLocation } from "wouter";
 import { useEffect, useState, type ReactNode } from "react";
 import { getEmployerAuth, type EmployerAuth } from "@/lib/employerAuth";
@@ -174,10 +180,58 @@ function Router() {
         )}
       />
       <Route
+        path="/employer/account/change-password"
+        component={() => (
+          <EmployerRouteGuard requiredStage="internal">
+            <EmployerChangePasswordPage />
+          </EmployerRouteGuard>
+        )}
+      />
+      <Route
+        path="/employer/account/deactivate"
+        component={() => (
+          <EmployerRouteGuard requiredStage="internal">
+            <EmployerDeactivateAccountPage />
+          </EmployerRouteGuard>
+        )}
+      />
+      <Route
+        path="/employer/shedule"
+        component={() => (
+          <EmployerRouteGuard requiredStage="internal">
+            <EmployerSchedulePage />
+          </EmployerRouteGuard>
+        )}
+      />
+      <Route
         path="/employer/cart"
         component={() => (
           <EmployerRouteGuard requiredStage="internal">
             <EmployerCartPage />
+          </EmployerRouteGuard>
+        )}
+      />
+      <Route
+        path="/employer/proposals"
+        component={() => (
+          <EmployerRouteGuard requiredStage="internal">
+            <EmployerProposalsPage />
+          </EmployerRouteGuard>
+        )}
+      />
+      <Route
+        path="/employer/proposals/:id"
+        component={() => (
+          <EmployerRouteGuard requiredStage="internal">
+            <EmployerProposalDetailPage />
+          </EmployerRouteGuard>
+        )}
+      />
+      <Route
+        path="/employer/proposals/:id/edit"
+        component={() => (
+          <EmployerRouteGuard requiredStage="internal">
+            <EmployerProposalEditPage />
           </EmployerRouteGuard>
         )}
       />

@@ -12,12 +12,18 @@ import {
   type InsertInternOnboarding,
   type Project,
   type InsertProject,
+  type Proposal,
+  type InsertProposal,
+  type Interview,
+  type InsertInterview,
   users,
   employers,
   admins,
   internOnboarding,
   internDocuments,
   projects,
+  proposals,
+  interviews,
 } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 
@@ -50,6 +56,7 @@ export interface IStorage {
   // Employer Projects
   createProject(project: InsertProject): Promise<Project>;
   getProjectsByEmployerId(employerId: string): Promise<Project[]>;
+  getProject(id: string): Promise<Project | undefined>;
   updateProject(id: string, data: Partial<InsertProject>): Promise<Project | undefined>;
   deleteProject(id: string): Promise<void>;
 
@@ -64,6 +71,21 @@ export interface IStorage {
   // Intern Documents
   getInternDocumentsByUserId(userId: string): Promise<InternDocuments | undefined>;
   upsertInternDocumentsByUserId(userId: string, data: Partial<InsertInternDocuments>): Promise<InternDocuments>;
+
+  // Proposals
+  createProposal(data: InsertProposal): Promise<Proposal>;
+  getProposal(id: string): Promise<Proposal | undefined>;
+  getProposalsByEmployerId(employerId: string): Promise<Proposal[]>;
+  getProposalsByInternId(internId: string): Promise<Proposal[]>;
+  updateProposalStatus(id: string, status: string): Promise<Proposal | undefined>;
+  updateProposal(id: string, data: Partial<InsertProposal>): Promise<Proposal | undefined>;
+
+  // Interviews
+  createInterview(data: InsertInterview): Promise<Interview>;
+  getInterviewsByInternId(internId: string): Promise<Interview[]>;
+  getInterviewsByEmployerId(employerId: string): Promise<Interview[]>;
+  updateInterviewSelectedSlot(id: string, selectedSlot: number): Promise<Interview | undefined>;
+  resetInterviewToPending(id: string): Promise<Interview | undefined>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -161,6 +183,14 @@ export class PostgresStorage implements IStorage {
       .where(eq(projects.employerId, employerId))
       .orderBy(desc(projects.createdAt));
     return result;
+  }
+
+  async getProject(id: string): Promise<Project | undefined> {
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, id));
+    return project;
   }
 
   async updateProject(
@@ -263,6 +293,65 @@ export class PostgresStorage implements IStorage {
     return updated;
   }
 
+  // Interviews
+  async createInterview(data: InsertInterview): Promise<Interview> {
+    const [interview] = await db
+      .insert(interviews)
+      .values({
+        ...data,
+        updatedAt: new Date(),
+      } as any)
+      .returning();
+    return interview;
+  }
+
+  async getInterviewsByInternId(internId: string): Promise<Interview[]> {
+    const result = await db
+      .select()
+      .from(interviews)
+      .where(eq(interviews.internId, internId))
+      .orderBy(desc(interviews.createdAt));
+    return result;
+  }
+
+  async getInterviewsByEmployerId(employerId: string): Promise<Interview[]> {
+    const result = await db
+      .select()
+      .from(interviews)
+      .where(eq(interviews.employerId, employerId))
+      .orderBy(desc(interviews.createdAt));
+    return result;
+  }
+
+  async updateInterviewSelectedSlot(
+    id: string,
+    selectedSlot: number,
+  ): Promise<Interview | undefined> {
+    const [updated] = await db
+      .update(interviews)
+      .set({
+        selectedSlot,
+        status: "scheduled",
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(interviews.id, id))
+      .returning();
+    return updated;
+  }
+
+  async resetInterviewToPending(id: string): Promise<Interview | undefined> {
+    const [updated] = await db
+      .update(interviews)
+      .set({
+        status: "pending",
+        selectedSlot: null,
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(interviews.id, id))
+      .returning();
+    return updated;
+  }
+
   // Intern Documents
   async getInternDocumentsByUserId(userId: string): Promise<InternDocuments | undefined> {
     const [doc] = await db
@@ -294,6 +383,85 @@ export class PostgresStorage implements IStorage {
       .values({ ...(data as InsertInternDocuments), userId, updatedAt: new Date() })
       .returning();
     return created;
+  }
+
+  // Proposals
+  async createProposal(data: InsertProposal): Promise<Proposal> {
+    const [proposal] = await db
+      .insert(proposals)
+      .values({
+        ...data,
+        interviewId: data.interviewId, // Pass through optional interviewId
+        // ensure jsonb defaults are always proper objects/arrays
+        offerDetails: data.offerDetails ?? {},
+        aiRatings: data.aiRatings ?? {},
+        skills: Array.isArray(data.skills) ? data.skills : [],
+        updatedAt: new Date(),
+      } as any)
+      .returning();
+    return proposal;
+  }
+
+  async getProposal(id: string): Promise<Proposal | undefined> {
+    const [proposal] = await db
+      .select()
+      .from(proposals)
+      .where(eq(proposals.id, id));
+    return proposal;
+  }
+
+  async getProposalsByEmployerId(employerId: string): Promise<Proposal[]> {
+    const result = await db
+      .select()
+      .from(proposals)
+      .where(eq(proposals.employerId, employerId))
+      .orderBy(desc(proposals.createdAt));
+    return result;
+  }
+
+  async getProposalsByInternId(internId: string): Promise<Proposal[]> {
+    const result = await db
+      .select()
+      .from(proposals)
+      .where(eq(proposals.internId, internId))
+      .orderBy(desc(proposals.createdAt));
+    return result;
+  }
+
+  async updateProposalStatus(
+    id: string,
+    status: string,
+  ): Promise<Proposal | undefined> {
+    const [updated] = await db
+      .update(proposals)
+      .set({ status, updatedAt: new Date() } as any)
+      .where(eq(proposals.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateProposal(
+    id: string,
+    data: Partial<InsertProposal>,
+  ): Promise<Proposal | undefined> {
+    const sanitized: any = { ...data };
+
+    if (data.offerDetails !== undefined) {
+      sanitized.offerDetails = data.offerDetails ?? {};
+    }
+    if (data.aiRatings !== undefined) {
+      sanitized.aiRatings = data.aiRatings ?? {};
+    }
+    if (data.skills !== undefined) {
+      sanitized.skills = Array.isArray(data.skills) ? data.skills : [];
+    }
+
+    const [updated] = await db
+      .update(proposals)
+      .set({ ...sanitized, updatedAt: new Date() } as any)
+      .where(eq(proposals.id, id))
+      .returning();
+    return updated;
   }
 }
 

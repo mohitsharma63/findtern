@@ -22,13 +22,31 @@ import {
   Calendar,
   Briefcase,
   GraduationCap,
-  Sparkles
+  Sparkles,
+  Send
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,7 +59,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation, Link } from "wouter";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import { getEmployerAuth } from "@/lib/employerAuth";
+import { EmployerHeader } from "@/components/employer/EmployerHeader";
 
 // Types
 interface CartCandidate {
@@ -77,6 +96,28 @@ export default function EmployerCartPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingCandidate, setDeletingCandidate] = useState<CartCandidate | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [activeCandidate, setActiveCandidate] = useState<CartCandidate | null>(null);
+  const [isMeetingDialogOpen, setIsMeetingDialogOpen] = useState(false);
+  const [isProposalDialogOpen, setIsProposalDialogOpen] = useState(false);
+  const [isBulkHireDialogOpen, setIsBulkHireDialogOpen] = useState(false);
+  const [meetingSlots, setMeetingSlots] = useState<{ slot1: string; slot2: string; slot3: string }>({
+    slot1: "",
+    slot2: "",
+    slot3: "",
+  });
+  const [isSendingSlots, setIsSendingSlots] = useState(false);
+  const [proposalRoleTitle, setProposalRoleTitle] = useState("");
+  const [proposalJD, setProposalJD] = useState("");
+  const [proposalMode, setProposalMode] = useState("remote");
+  const [proposalStartDate, setProposalStartDate] = useState("");
+  const [proposalDuration, setProposalDuration] = useState("1m");
+  const [proposalShiftFrom, setProposalShiftFrom] = useState("09:00");
+  const [proposalShiftTo, setProposalShiftTo] = useState("18:00");
+  const [proposalTimezone, setProposalTimezone] = useState("Asia/Kolkata");
+  const [proposalLaptop, setProposalLaptop] = useState("candidate");
+  const [proposalMonthlyHours, setProposalMonthlyHours] = useState("160");
+  const [proposalMonthlyAmount, setProposalMonthlyAmount] = useState("");
+  const [isSendingProposal, setIsSendingProposal] = useState(false);
 
   // Load cart dynamically from localStorage + /api/interns
   useEffect(() => {
@@ -181,7 +222,20 @@ export default function EmployerCartPage() {
   const handleRemoveFromCart = () => {
     if (!deletingCandidate) return;
     
-    setCartItems(prev => prev.filter(c => c.id !== deletingCandidate.id));
+    setCartItems(prev => {
+      const updated = prev.filter(c => c.id !== deletingCandidate.id);
+
+      // Persist updated cart ids to localStorage so removed items don't reappear on reload
+      try {
+        const remainingIds = updated.map(c => c.id);
+        window.localStorage.setItem("employerCartIds", JSON.stringify(remainingIds));
+      } catch (error) {
+        console.error("Failed to update employerCartIds in localStorage", error);
+      }
+
+      return updated;
+    });
+
     setSelectedItems(prev => prev.filter(id => id !== deletingCandidate.id));
     setIsDeleteDialogOpen(false);
     setDeletingCandidate(null);
@@ -201,72 +255,49 @@ export default function EmployerCartPage() {
       });
       return;
     }
-
-    setIsCheckingOut(true);
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      toast({
-        title: "Request submitted!",
-        description: `Your hiring request for ${selectedItems.length} candidate(s) has been submitted.`,
-      });
-      
-      // Clear selected items from cart
-      setCartItems(prev => prev.filter(c => !selectedItems.includes(c.id)));
-      setSelectedItems([]);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to process your request. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCheckingOut(false);
-    }
+    setIsBulkHireDialogOpen(true);
   };
 
   const selectedCandidates = cartItems.filter(c => selectedItems.includes(c.id));
 
+  const openFirstSelectedForMeeting = () => {
+    if (selectedCandidates.length === 0) return;
+    const candidate = selectedCandidates[0];
+    setActiveCandidate(candidate);
+    setIsMeetingDialogOpen(true);
+  };
+
+  const openFirstSelectedForProposal = () => {
+    if (selectedCandidates.length === 0) return;
+    const candidate = selectedCandidates[0];
+    setActiveCandidate(candidate);
+    setIsProposalDialogOpen(true);
+  };
+
+  const proposalMonths = (() => {
+    switch (proposalDuration) {
+      case "3m":
+        return 3;
+      case "6m":
+        return 6;
+      case "12m":
+        return 12;
+      default:
+        return 1;
+    }
+  })();
+
+  const proposalTotalPrice = (() => {
+    const monthly = Number(proposalMonthlyAmount || "0");
+    if (!monthly || monthly <= 0) return "";
+    const total = monthly * proposalMonths;
+    if (!Number.isFinite(total) || total <= 0) return "";
+    return String(total);
+  })();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-teal-50/30">
-      {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-white/90 backdrop-blur-lg">
-        <div className="flex h-16 items-center justify-between px-4 md:px-6">
-          <div className="flex items-center gap-4">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-9 w-9 rounded-lg"
-              onClick={() => setLocation("/employer/dashboard")}
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div className="flex items-center gap-2">
-              <img src={findternLogo} alt="Findtern" className="h-10 w-auto" />
-              <div className="hidden sm:block">
-                <span className="text-lg font-bold text-emerald-700">FINDTERN</span>
-                <span className="text-xs text-slate-400 ml-1.5">INTERNSHIP SIMPLIFIED</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 md:gap-3">
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
-              <MessageSquare className="w-4 h-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100">
-              <Building2 className="w-4 h-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg">
-              <Bell className="w-4 h-4" />
-            </Button>
-            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-sm font-semibold">
-              N
-            </div>
-          </div>
-        </div>
-      </header>
+      <EmployerHeader active="cart" />
 
       <div className="container max-w-6xl mx-auto px-4 md:px-6 py-8">
         {/* Page Header */}
@@ -365,6 +396,31 @@ export default function EmployerCartPage() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
+                          {/* Schedule & Invite actions */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setActiveCandidate(candidate);
+                              setIsMeetingDialogOpen(true);
+                            }}
+                            className="h-9 w-9 rounded-full bg-emerald-900 text-white hover:bg-emerald-800 shadow-sm"
+                          >
+                            <Calendar className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setActiveCandidate(candidate);
+                              setIsProposalDialogOpen(true);
+                            }}
+                            className="h-9 w-9 rounded-full bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm"
+                          >
+                            <Send className="w-4 h-4" />
+                          </Button>
                           <Badge className="bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-semibold">
                             Score: {candidate.findternScore}
                           </Badge>
@@ -505,6 +561,660 @@ export default function EmployerCartPage() {
           </div>
         )}
       </div>
+
+      {/* Book Meeting Dialog */}
+      <Dialog open={isMeetingDialogOpen} onOpenChange={(open) => {
+        setIsMeetingDialogOpen(open);
+        if (!open) {
+          setActiveCandidate(null);
+          setMeetingSlots({ slot1: "", slot2: "", slot3: "" });
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {activeCandidate ? `Book Meeting with ${activeCandidate.name}` : "Book Meeting"}
+            </DialogTitle>
+            <DialogDescription>
+              Select up to 3 preferred time slots for the next few days. The candidate will pick one.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {([1, 2, 3] as const).map((slot) => (
+              <div key={slot} className="space-y-1">
+                <label className="text-xs font-medium text-slate-700 flex items-center justify-between">
+                  <span>Slot {slot}</span>
+                  <span className="text-[10px] text-slate-400">Next 3 days</span>
+                </label>
+                <div className="relative">
+                  <Input
+                    type="datetime-local"
+                    className="h-10 text-sm pr-10"
+                    value={
+                      slot === 1
+                        ? meetingSlots.slot1
+                        : slot === 2
+                        ? meetingSlots.slot2
+                        : meetingSlots.slot3
+                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setMeetingSlots((prev) =>
+                        slot === 1
+                          ? { ...prev, slot1: value }
+                          : slot === 2
+                          ? { ...prev, slot2: value }
+                          : { ...prev, slot3: value },
+                      );
+                    }}
+                  />
+                  <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                </div>
+              </div>
+            ))}
+
+            <div className="space-y-1 text-xs">
+              <p className="font-medium text-slate-700">Time Zone</p>
+              <p className="text-slate-500">Your account time zone will be shown to the candidate along with the slots.</p>
+              <p className="text-[11px] text-amber-600 flex items-start gap-1 mt-1">
+                <AlertCircle className="w-3.5 h-3.5 mt-0.5" />
+                <span>Timezone is pre-selected and cannot be changed here. Ensure your profile timezone is correct.</span>
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-4">
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700"
+              disabled={isSendingSlots}
+              onClick={async () => {
+                if (!meetingSlots.slot1 || !meetingSlots.slot2 || !meetingSlots.slot3) {
+                  toast({
+                    title: "Add all 3 slots",
+                    description: "Please select all three meeting slots before sending.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                if (!activeCandidate) {
+                  toast({
+                    title: "No candidate selected",
+                    description: "Please select a candidate to book a meeting with.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                const auth = getEmployerAuth();
+                const employerId = auth?.id as string | undefined;
+
+                if (!employerId) {
+                  toast({
+                    title: "Employer not found",
+                    description: "Please log in again as employer to schedule interviews.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                try {
+                  setIsSendingSlots(true);
+
+                  const slots = [meetingSlots.slot1, meetingSlots.slot2, meetingSlots.slot3];
+
+                  const res = await fetch(`/api/employer/${employerId}/interviews`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      internId: activeCandidate.id,
+                      projectId: null,
+                      // TODO: once employer profile supports timezone, send that instead of hardcoding
+                      timezone: "Asia/Kolkata",
+                      slots,
+                    }),
+                  });
+
+                  if (!res.ok) {
+                    const errJson = await res.json().catch(() => null);
+                    const message = errJson?.message || "Failed to create interview slots";
+                    throw new Error(message);
+                  }
+
+                  toast({
+                    title: "Slots sent",
+                    description: `Your meeting slots have been shared with ${activeCandidate.name}.`,
+                  });
+
+                  setIsMeetingDialogOpen(false);
+                  setActiveCandidate(null);
+                  setMeetingSlots({ slot1: "", slot2: "", slot3: "" });
+                } catch (error: any) {
+                  console.error("Create interview error", error);
+                  toast({
+                    title: "Could not send slots",
+                    description: error?.message || "Something went wrong while creating interview slots.",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setIsSendingSlots(false);
+                }
+              }}
+            >
+              {isSendingSlots ? "Sending..." : "Save & Send Slots"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Proceed to Hire Dialog */}
+      <Dialog open={isBulkHireDialogOpen} onOpenChange={(open) => setIsBulkHireDialogOpen(open)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Proceed to Hire ({selectedItems.length} candidate{selectedItems.length !== 1 ? "s" : ""})</DialogTitle>
+            <DialogDescription>
+              Choose how you want to move forward with the selected candidates.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-2">
+            {/* Option 1: Direct hiring */}
+            <Card className="p-4 border border-emerald-200/70 bg-emerald-50/60 rounded-xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-emerald-800">Direct Hiring (Send Proposals Now)</p>
+                  <p className="text-xs text-emerald-700 mt-1">
+                    Use this when you are confident about the candidates and want to send the final hiring proposal without a prior interview.
+                  </p>
+                  <p className="text-[11px] text-emerald-800 mt-2">
+                    You can still tweak details for each candidate using the green paper-plane icon on their card.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => {
+                    if (selectedCandidates.length === 0) {
+                      toast({
+                        title: "No candidates selected",
+                        description: "Please select at least one candidate to send proposals.",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    setIsBulkHireDialogOpen(false);
+                    openFirstSelectedForProposal();
+                  }}
+                >
+                  Continue with Direct Proposals
+                </Button>
+              </div>
+            </Card>
+
+            {/* Option 2: Interview first, then hire */}
+            <Card className="p-4 border border-slate-200 rounded-xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Interview First, Then Send Offer</p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Use this when you want to schedule interviews before sending a formal proposal. Ideal for shortlisted candidates where you still need an interaction.
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-2">
+                    Schedule interviews using the dark green calendar icon on each candidate card, then send proposals from the paper-plane icon after interviews.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (selectedCandidates.length === 0) {
+                      toast({
+                        title: "No candidates selected",
+                        description: "Please select at least one candidate to schedule interviews.",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    setIsBulkHireDialogOpen(false);
+                    openFirstSelectedForMeeting();
+                  }}
+                >
+                  Continue to Schedule Interviews
+                </Button>
+              </div>
+            </Card>
+
+            <p className="text-[11px] text-slate-500 mt-1">
+              Tip: You can mix both flows – interview only a few candidates and send direct proposals to those you already know you want to hire.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Hiring Proposal Dialog */}
+      <Dialog open={isProposalDialogOpen} onOpenChange={(open) => {
+        setIsProposalDialogOpen(open);
+        if (!open) {
+          setActiveCandidate(null);
+          setProposalRoleTitle("");
+          setProposalJD("");
+          setProposalMode("remote");
+          setProposalStartDate("");
+          setProposalDuration("1m");
+          setProposalShiftFrom("09:00");
+          setProposalShiftTo("18:00");
+          setProposalTimezone("Asia/Kolkata");
+          setProposalLaptop("candidate");
+          setProposalMonthlyHours("160");
+          setProposalMonthlyAmount("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {activeCandidate ? `Send Hiring Proposal to ${activeCandidate.name}` : "Send Hiring Proposal"}
+            </DialogTitle>
+            <DialogDescription>
+              Share the final internship offer details. The candidate can accept and join directly.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Internship Role Title<span className="text-red-500">*</span></label>
+                <Input
+                  className="h-9 text-sm"
+                  placeholder="e.g. Design Intern"
+                  value={proposalRoleTitle}
+                  onChange={(e) => setProposalRoleTitle(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700 flex items-center justify-between">
+                  <span>Roles and Responsibilities / JD<span className="text-red-500">*</span></span>
+                  <span className="text-[11px] text-slate-400">Optional file upload</span>
+                </label>
+                <Textarea
+                  className="min-h-[80px] text-sm resize-y"
+                  placeholder="Briefly describe the role, responsibilities, and expectations."
+                  value={proposalJD}
+                  onChange={(e) => setProposalJD(e.target.value)}
+                />
+                <Input type="file" className="h-9 text-xs" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Internship Mode<span className="text-red-500">*</span></label>
+                <Select
+                  value={proposalMode}
+                  onValueChange={(value) => setProposalMode(value)}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Select mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="remote">Remote</SelectItem>
+                    <SelectItem value="onsite">Onsite</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Start Date<span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <Input
+                    type="date"
+                    className="h-9 text-sm pr-10"
+                    value={proposalStartDate}
+                    onChange={(e) => setProposalStartDate(e.target.value)}
+                  />
+                  <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Internship Duration<span className="text-red-500">*</span></label>
+                <Select
+                  value={proposalDuration}
+                  onValueChange={(value) => setProposalDuration(value)}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1m">1 month</SelectItem>
+                    <SelectItem value="3m">3 months</SelectItem>
+                    <SelectItem value="6m">6 months</SelectItem>
+                    <SelectItem value="12m">12 months</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Shift Timings<span className="text-red-500">*</span></label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Select
+                    value={proposalShiftFrom}
+                    onValueChange={(value) => setProposalShiftFrom(value)}
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="From" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="09:00">09:00</SelectItem>
+                      <SelectItem value="10:00">10:00</SelectItem>
+                      <SelectItem value="11:00">11:00</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={proposalShiftTo}
+                    onValueChange={(value) => setProposalShiftTo(value)}
+                  >
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="To" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="17:00">17:00</SelectItem>
+                      <SelectItem value="18:00">18:00</SelectItem>
+                      <SelectItem value="19:00">19:00</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-[11px] text-slate-500">Local time for your organisation.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Time Zone<span className="text-red-500">*</span></label>
+                <Select
+                  value={proposalTimezone}
+                  onValueChange={(value) => setProposalTimezone(value)}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Asia/Kolkata">(GMT+05:30) India Standard Time</SelectItem>
+                    <SelectItem value="America/Metlakatla">(GMT-09:00) Metlakatla</SelectItem>
+                    <SelectItem value="Europe/London">(GMT+00:00) London</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Laptop<span className="text-red-500">*</span></label>
+                <Select
+                  value={proposalLaptop}
+                  onValueChange={(value) => setProposalLaptop(value)}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="candidate">Candidate's Own Laptop</SelectItem>
+                    <SelectItem value="company">Company Provided</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Monthly Working Hours<span className="text-red-500">*</span></label>
+                <Input
+                  type="number"
+                  className="h-9 text-sm"
+                  value={proposalMonthlyHours}
+                  onChange={(e) => setProposalMonthlyHours(e.target.value)}
+                />
+                <p className="text-[11px] text-amber-600 flex items-start gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5" />
+                  <span>Considering 40hr/week, 4 weeks a month.</span>
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Monthly Payable Amount<span className="text-red-500">*</span></label>
+                <Input
+                  type="number"
+                  className="h-9 text-sm"
+                  placeholder="0"
+                  value={proposalMonthlyAmount}
+                  onChange={(e) => setProposalMonthlyAmount(e.target.value)}
+                />
+                <p className="text-[11px] text-slate-500">Amount billed each month.</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Total Price (auto-filled)<span className="text-red-500">*</span></label>
+                <Input
+                  type="number"
+                  className="h-9 text-sm bg-slate-50"
+                  placeholder="5000"
+                  value={proposalTotalPrice}
+                  readOnly
+                />
+                <p className="text-[11px] text-slate-500">Total amount for the internship.</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="mt-4 flex items-center justify-between gap-3">
+            <div className="text-[11px] text-slate-500 flex-1">
+              You can either send this proposal directly (without interview) or share it after the interview is completed.
+            </div>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              disabled={isSendingProposal}
+              onClick={async () => {
+                const monthlyHoursNum = Number(proposalMonthlyHours || "0");
+                const monthlyAmountNum = Number(proposalMonthlyAmount || "0");
+
+                if (!proposalRoleTitle.trim()) {
+                  toast({
+                    title: "Role title is required",
+                    description: "Please enter the internship role title.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                if (!proposalJD.trim()) {
+                  toast({
+                    title: "JD is required",
+                    description: "Please describe the role and responsibilities.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                if (!proposalStartDate) {
+                  toast({
+                    title: "Start date is required",
+                    description: "Please select a start date for the internship.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                if (!proposalShiftFrom || !proposalShiftTo) {
+                  toast({
+                    title: "Shift timings required",
+                    description: "Please select both start and end times.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                if (!proposalTimezone) {
+                  toast({
+                    title: "Time zone is required",
+                    description: "Please select a time zone.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                if (!proposalLaptop) {
+                  toast({
+                    title: "Laptop preference required",
+                    description: "Please specify who will provide the laptop.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                if (!monthlyHoursNum || monthlyHoursNum <= 0) {
+                  toast({
+                    title: "Monthly hours invalid",
+                    description: "Please enter a positive number of working hours.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                if (!monthlyAmountNum || monthlyAmountNum <= 0) {
+                  toast({
+                    title: "Monthly amount invalid",
+                    description: "Please enter a positive monthly payable amount.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                if (!activeCandidate) {
+                  toast({
+                    title: "No candidate selected",
+                    description: "Please select a candidate to send proposal.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                try {
+                  setIsSendingProposal(true);
+
+                  const auth = getEmployerAuth();
+                  const employerId = auth?.id as string | undefined;
+
+                  if (!employerId) {
+                    toast({
+                      title: "Employer not found",
+                      description: "Please log in again as employer to send proposals.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  const projectsRes = await fetch(`/api/employer/${employerId}/projects`);
+                  if (!projectsRes.ok) {
+                    throw new Error("Failed to load employer projects");
+                  }
+                  const projectsJson = await projectsRes.json();
+                  const projectsList = (projectsJson?.projects ?? []) as any[];
+                  const firstProject = projectsList[0];
+
+                  if (!firstProject?.id) {
+                    toast({
+                      title: "No project found",
+                      description: "Please complete employer onboarding and create a project first.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  const offerDetails = {
+                    roleTitle: proposalRoleTitle,
+                    jd: proposalJD,
+                    mode: proposalMode,
+                    startDate: proposalStartDate,
+                    duration: proposalDuration,
+                    shiftFrom: proposalShiftFrom,
+                    shiftTo: proposalShiftTo,
+                    timezone: proposalTimezone,
+                    laptop: proposalLaptop,
+                    monthlyHours: monthlyHoursNum,
+                    monthlyAmount: monthlyAmountNum,
+                    totalPrice: Number(proposalTotalPrice || monthlyAmountNum * proposalMonths),
+                  };
+
+                  const res = await fetch(`/api/employer/${employerId}/proposals`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      internId: activeCandidate.id,
+                      projectId: firstProject.id,
+                      flowType: "direct",
+                      offerDetails,
+                      aiRatings: {
+                        communication: activeCandidate.aiRatings.communication,
+                        coding: activeCandidate.aiRatings.coding,
+                        aptitude: activeCandidate.aiRatings.aptitude,
+                        overall: activeCandidate.aiRatings.interview,
+                      },
+                      skills: activeCandidate.skills,
+                    }),
+                  });
+
+                  if (!res.ok) {
+                    const errJson = await res.json().catch(() => null);
+                    const message = errJson?.message || "Failed to send proposal";
+                    throw new Error(message);
+                  }
+
+                  toast({
+                    title: "Proposal sent",
+                    description: `Your hiring proposal has been sent to ${activeCandidate.name}.`,
+                  });
+
+                  const removedId = activeCandidate.id;
+                  setCartItems((prev) => prev.filter((c) => c.id !== removedId));
+                  setSelectedItems((prev) => prev.filter((id) => id !== removedId));
+                  try {
+                    const storedIdsRaw = window.localStorage.getItem("employerCartIds");
+                    const storedIds: string[] = storedIdsRaw ? JSON.parse(storedIdsRaw) : [];
+                    const nextIds = storedIds.filter((id) => id !== removedId);
+                    window.localStorage.setItem("employerCartIds", JSON.stringify(nextIds));
+                  } catch (error) {
+                    console.error("Failed to update employerCartIds after sending proposal", error);
+                  }
+
+                  setIsProposalDialogOpen(false);
+                  setActiveCandidate(null);
+                  setProposalRoleTitle("");
+                  setProposalJD("");
+                  setProposalMode("remote");
+                  setProposalStartDate("");
+                  setProposalDuration("1m");
+                  setProposalShiftFrom("09:00");
+                  setProposalShiftTo("18:00");
+                  setProposalTimezone("Asia/Kolkata");
+                  setProposalLaptop("candidate");
+                  setProposalMonthlyHours("160");
+                  setProposalMonthlyAmount("");
+                } catch (error: any) {
+                  console.error("Send proposal error", error);
+                  toast({
+                    title: "Failed to send proposal",
+                    description: error?.message || "Something went wrong while sending proposal.",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setIsSendingProposal(false);
+                }
+              }}
+            >
+              {isSendingProposal ? "Sending..." : "Send Proposal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

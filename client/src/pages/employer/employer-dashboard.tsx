@@ -31,6 +31,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -59,6 +60,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,13 +77,131 @@ import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { getEmployerAuth } from "@/lib/employerAuth";
 import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import { EmployerHeader } from "@/components/employer/EmployerHeader";
 import skillsData from "@/data/skills.json";
+
+const TIMEZONES: { id: string; label: string; disabled?: boolean }[] = [
+  { id: "group-utc", label: "🌍 UTC / Global", disabled: true },
+  { id: "UTC", label: "UTC 🌐" },
+  { id: "Etc/UTC", label: "Etc/UTC 🌐" },
+  { id: "Etc/GMT", label: "Etc/GMT 🌐" },
+
+  { id: "group-asia", label: "🇮🇳 Asia", disabled: true },
+  { id: "Asia/Kolkata", label: "Asia/Kolkata 🇮🇳" },
+  { id: "Asia/Karachi", label: "Asia/Karachi 🇵🇰" },
+  { id: "Asia/Dhaka", label: "Asia/Dhaka 🇧🇩" },
+  { id: "Asia/Kathmandu", label: "Asia/Kathmandu 🇳🇵" },
+  { id: "Asia/Colombo", label: "Asia/Colombo 🇱🇰" },
+  { id: "Asia/Dubai", label: "Asia/Dubai 🇦🇪" },
+  { id: "Asia/Muscat", label: "Asia/Muscat 🇴🇲" },
+  { id: "Asia/Riyadh", label: "Asia/Riyadh 🇸🇦" },
+  { id: "Asia/Qatar", label: "Asia/Qatar 🇶🇦" },
+  { id: "Asia/Kuwait", label: "Asia/Kuwait 🇰🇼" },
+  { id: "Asia/Tehran", label: "Asia/Tehran 🇮🇷" },
+  { id: "Asia/Baghdad", label: "Asia/Baghdad 🇮🇶" },
+  { id: "Asia/Jerusalem", label: "Asia/Jerusalem 🇮🇱" },
+  { id: "Asia/Amman", label: "Asia/Amman 🇯🇴" },
+  { id: "Asia/Beirut", label: "Asia/Beirut 🇱🇧" },
+  { id: "Asia/Damascus", label: "Asia/Damascus 🇸🇾" },
+  { id: "Asia/Istanbul", label: "Asia/Istanbul 🇹🇷" },
+  { id: "Asia/Tbilisi", label: "Asia/Tbilisi 🇬🇪" },
+  { id: "Asia/Yerevan", label: "Asia/Yerevan 🇦🇲" },
+  { id: "Asia/Baku", label: "Asia/Baku 🇦🇿" },
+  { id: "Asia/Kabul", label: "Asia/Kabul 🇦🇫" },
+  { id: "Asia/Tashkent", label: "Asia/Tashkent 🇺🇿" },
+  { id: "Asia/Almaty", label: "Asia/Almaty 🇰🇿" },
+  { id: "Asia/Tokyo", label: "Asia/Tokyo 🇯🇵" },
+  { id: "Asia/Seoul", label: "Asia/Seoul 🇰🇷" },
+  { id: "Asia/Shanghai", label: "Asia/Shanghai 🇨🇳" },
+  { id: "Asia/Hong_Kong", label: "Asia/Hong_Kong 🇭🇰" },
+  { id: "Asia/Taipei", label: "Asia/Taipei 🇹🇼" },
+  { id: "Asia/Singapore", label: "Asia/Singapore 🇸🇬" },
+  { id: "Asia/Kuala_Lumpur", label: "Asia/Kuala_Lumpur 🇲🇾" },
+  { id: "Asia/Jakarta", label: "Asia/Jakarta 🇮🇩" },
+  { id: "Asia/Bangkok", label: "Asia/Bangkok 🇹🇭" },
+  { id: "Asia/Ho_Chi_Minh", label: "Asia/Ho_Chi_Minh 🇻🇳" },
+  { id: "Asia/Manila", label: "Asia/Manila 🇵🇭" },
+
+  { id: "group-europe", label: "🇪🇺 Europe", disabled: true },
+  { id: "Europe/London", label: "Europe/London 🇬🇧" },
+  { id: "Europe/Paris", label: "Europe/Paris 🇫🇷" },
+  { id: "Europe/Berlin", label: "Europe/Berlin 🇩🇪" },
+  { id: "Europe/Rome", label: "Europe/Rome 🇮🇹" },
+  { id: "Europe/Madrid", label: "Europe/Madrid 🇪🇸" },
+  { id: "Europe/Amsterdam", label: "Europe/Amsterdam 🇳🇱" },
+  { id: "Europe/Brussels", label: "Europe/Brussels 🇧🇪" },
+  { id: "Europe/Vienna", label: "Europe/Vienna 🇦🇹" },
+  { id: "Europe/Zurich", label: "Europe/Zurich 🇨🇭" },
+  { id: "Europe/Stockholm", label: "Europe/Stockholm 🇸🇪" },
+  { id: "Europe/Oslo", label: "Europe/Oslo 🇳🇴" },
+  { id: "Europe/Copenhagen", label: "Europe/Copenhagen 🇩🇰" },
+  { id: "Europe/Helsinki", label: "Europe/Helsinki 🇫🇮" },
+  { id: "Europe/Warsaw", label: "Europe/Warsaw 🇵🇱" },
+  { id: "Europe/Prague", label: "Europe/Prague 🇨🇿" },
+  { id: "Europe/Budapest", label: "Europe/Budapest 🇭🇺" },
+  { id: "Europe/Athens", label: "Europe/Athens 🇬🇷" },
+  { id: "Europe/Bucharest", label: "Europe/Bucharest 🇷🇴" },
+  { id: "Europe/Sofia", label: "Europe/Sofia 🇧🇬" },
+  { id: "Europe/Kiev", label: "Europe/Kiev 🇺🇦" },
+  { id: "Europe/Moscow", label: "Europe/Moscow 🇷🇺" },
+  { id: "Europe/Lisbon", label: "Europe/Lisbon 🇵🇹" },
+  { id: "Europe/Dublin", label: "Europe/Dublin 🇮🇪" },
+  { id: "Europe/Reykjavik", label: "Europe/Reykjavik 🇮🇸" },
+
+  { id: "group-america", label: "🇺🇸 America", disabled: true },
+  { id: "America/New_York", label: "America/New_York 🇺🇸" },
+  { id: "America/Chicago", label: "America/Chicago 🇺🇸" },
+  { id: "America/Denver", label: "America/Denver 🇺🇸" },
+  { id: "America/Los_Angeles", label: "America/Los_Angeles 🇺🇸" },
+  { id: "America/Phoenix", label: "America/Phoenix 🇺🇸" },
+  { id: "America/Anchorage", label: "America/Anchorage 🇺🇸" },
+  { id: "America/Toronto", label: "America/Toronto 🇨🇦" },
+  { id: "America/Vancouver", label: "America/Vancouver 🇨🇦" },
+  { id: "America/Mexico_City", label: "America/Mexico_City 🇲🇽" },
+  { id: "America/Bogota", label: "America/Bogota 🇨🇴" },
+  { id: "America/Lima", label: "America/Lima 🇵🇪" },
+  { id: "America/Santiago", label: "America/Santiago 🇨🇱" },
+  { id: "America/Argentina/Buenos_Aires", label: "America/Argentina/Buenos_Aires 🇦🇷" },
+  { id: "America/Sao_Paulo", label: "America/Sao_Paulo 🇧🇷" },
+  { id: "America/Havana", label: "America/Havana 🇨🇺" },
+  { id: "America/Panama", label: "America/Panama 🇵🇦" },
+  { id: "America/Jamaica", label: "America/Jamaica 🇯🇲" },
+
+  { id: "group-aus", label: "🇦🇺 Australia & Pacific", disabled: true },
+  { id: "Australia/Sydney", label: "Australia/Sydney 🇦🇺" },
+  { id: "Australia/Melbourne", label: "Australia/Melbourne 🇦🇺" },
+  { id: "Australia/Brisbane", label: "Australia/Brisbane 🇦🇺" },
+  { id: "Australia/Perth", label: "Australia/Perth 🇦🇺" },
+  { id: "Australia/Adelaide", label: "Australia/Adelaide 🇦🇺" },
+  { id: "Australia/Darwin", label: "Australia/Darwin 🇦🇺" },
+  { id: "Pacific/Auckland", label: "Pacific/Auckland 🇳🇿" },
+  { id: "Pacific/Fiji", label: "Pacific/Fiji 🇫🇯" },
+  { id: "Pacific/Guam", label: "Pacific/Guam 🇬🇺" },
+  { id: "Pacific/Honolulu", label: "Pacific/Honolulu 🇺🇸" },
+
+  { id: "group-africa", label: "🌍 Africa", disabled: true },
+  { id: "Africa/Cairo", label: "Africa/Cairo 🇪🇬" },
+  { id: "Africa/Johannesburg", label: "Africa/Johannesburg 🇿🇦" },
+  { id: "Africa/Nairobi", label: "Africa/Nairobi 🇰🇪" },
+  { id: "Africa/Lagos", label: "Africa/Lagos 🇳🇬" },
+  { id: "Africa/Accra", label: "Africa/Accra 🇬🇭" },
+  { id: "Africa/Casablanca", label: "Africa/Casablanca 🇲🇦" },
+  { id: "Africa/Algiers", label: "Africa/Algiers 🇩🇿" },
+  { id: "Africa/Tunis", label: "Africa/Tunis 🇹🇳" },
+];
 
 // Types
 interface Project {
   id: string;
   name: string;
   skills: string[];
+  scopeOfWork?: string;
+  fullTimeOffer?: boolean;
+  locationType?: string | null;
+  pincode?: string | null;
+  city?: string | null;
+  timezone?: string | null;
+  status?: string | null;
 }
 
 const initialProjects: Project[] = [];
@@ -93,6 +214,8 @@ type Candidate = {
   findternScore: number;
   skills: string[];
   matchedSkills: string[];
+  preferredLocations: string[];
+  languages: string[];
   aiRatings: {
     communication: number;
     coding: number;
@@ -101,6 +224,7 @@ type Candidate = {
   };
   hasProfile: boolean;
   isAdded: boolean;
+  hasLaptop: boolean;
 };
 
 export default function EmployerDashboardPage() {
@@ -117,8 +241,39 @@ export default function EmployerDashboardPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [projectScope, setProjectScope] = useState("");
+  const [projectFullTimeOffer, setProjectFullTimeOffer] = useState(false);
+  const [projectLocationType, setProjectLocationType] = useState<string>("");
+  const [projectPincode, setProjectPincode] = useState("");
+  const [projectCity, setProjectCity] = useState("");
+  const [projectTimezone, setProjectTimezone] = useState("Asia/Kolkata");
+  const [projectStatus, setProjectStatus] = useState("active");
+  const [projectSkillsInput, setProjectSkillsInput] = useState("");
+  const [projectStep, setProjectStep] = useState(1); // 1: Name, 2: Skills, 3: Scope, 4: Location
   const [isLoading, setIsLoading] = useState(false);
+  const [projectSkillSearch, setProjectSkillSearch] = useState("");
+  const [isTimezoneDropdownOpen, setIsTimezoneDropdownOpen] = useState(false);
+
+  const projectSkillList = useMemo(
+    () =>
+      projectSkillsInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0),
+    [projectSkillsInput],
+  );
+
+  const projectFilteredSkillOptions = useMemo(() => {
+    const lowerSelected = projectSkillList.map((s) => s.toLowerCase());
+    const pool = (skillsData as string[]).filter(
+      (s) => !lowerSelected.includes(s.toLowerCase()),
+    );
+    if (!projectSkillSearch.trim()) return pool.slice(0, 10);
+    const q = projectSkillSearch.toLowerCase();
+    return pool.filter((s) => s.toLowerCase().includes(q)).slice(0, 10);
+  }, [projectSkillList, projectSkillSearch]);
   
   // Filter states
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
@@ -132,6 +287,10 @@ export default function EmployerDashboardPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [skillSearch, setSkillSearch] = useState("");
   const [isSkillDropdownOpen, setIsSkillDropdownOpen] = useState(false);
+  const [locationOptions, setLocationOptions] = useState<string[]>([]);
+  const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [languageOptions, setLanguageOptions] = useState<string[]>([]);
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
 
   useEffect(() => {
     const auth = getEmployerAuth();
@@ -161,6 +320,13 @@ export default function EmployerDashboardPage() {
             id: p.id,
             name: p.projectName,
             skills,
+            scopeOfWork: p.scopeOfWork ?? "",
+            fullTimeOffer: p.fullTimeOffer ?? false,
+            locationType: p.locationType ?? null,
+            pincode: p.pincode ?? null,
+            city: p.city ?? null,
+            timezone: p.timezone ?? null,
+            status: p.status ?? "active",
           } as Project;
         });
 
@@ -182,6 +348,9 @@ export default function EmployerDashboardPage() {
         const response = await apiRequest("GET", "/api/interns");
         const json = await response.json();
         const list = (json?.interns || []) as any[];
+        const citySet = new Set<string>();
+        const languageSet = new Set<string>();
+
         const mapped: Candidate[] = list.map((item) => {
           const onboarding = item.onboarding ?? {};
           const user = item.user ?? {};
@@ -197,7 +366,37 @@ export default function EmployerDashboardPage() {
                 : "",
             )
             .filter((s: string) => s.trim().length > 0);
-          const locationParts = [onboarding.city, onboarding.state].filter(Boolean).join(", ");
+          const preferredLocationsRaw = Array.isArray(onboarding.preferredLocations)
+            ? onboarding.preferredLocations
+            : [];
+          const preferredLocations: string[] = preferredLocationsRaw
+            .map((loc: any) => (typeof loc === "string" ? loc.trim() : ""))
+            .filter((loc: string) => loc.length > 0);
+
+          const locationCity = onboarding.city?.trim();
+          const locationState = onboarding.state?.trim();
+          const locationParts = [locationCity, locationState].filter(Boolean).join(", ");
+
+          // languages from extraData.languages (array of strings or objects)
+          const extra = onboarding.extraData ?? {};
+          const rawLanguages = Array.isArray(extra.languages) ? extra.languages : [];
+          const languages: string[] = rawLanguages
+            .map((lang: any) => {
+              if (typeof lang === "string") return lang.trim();
+              if (!lang || typeof lang !== "object") return "";
+              const name = (lang.language ?? lang.name ?? "").toString();
+              const level = (lang.level ?? "").toString();
+              return [name, level].filter(Boolean).join(" - ");
+            })
+            .filter((v: string) => v.length > 0);
+
+          // collect unique cities for location filter from both preferredLocations and city field
+          if (locationCity) {
+            citySet.add(locationCity);
+          }
+          preferredLocations.forEach((loc) => citySet.add(loc));
+
+          languages.forEach((lang) => languageSet.add(lang));
           const userFirst = user.firstName ?? "";
           const userLast = user.lastName ?? "";
           const fullFromUser = `${userFirst} ${userLast}`.trim();
@@ -218,6 +417,8 @@ export default function EmployerDashboardPage() {
             findternScore: onboarding.extraData?.findternScore ?? 0,
             skills,
             matchedSkills: skills, // for now treat all skills as matched
+            preferredLocations,
+            languages,
             aiRatings: {
               communication: onboarding.extraData?.ratings?.communication ?? 0,
               coding: onboarding.extraData?.ratings?.coding ?? 0,
@@ -226,6 +427,7 @@ export default function EmployerDashboardPage() {
             },
             hasProfile: !!documents?.profilePhotoName,
             isAdded: false,
+            hasLaptop: onboarding.hasLaptop === true,
           };
         });
 
@@ -236,13 +438,19 @@ export default function EmployerDashboardPage() {
         setCart(storedCart);
         setCartCount(storedCart.length);
 
-        setCandidates(
-          mapped.map((c) =>
-            storedCart.includes(c.id)
-              ? { ...c, isAdded: true }
-              : c,
-          ),
+        const finalCandidates = mapped.map((c) =>
+          storedCart.includes(c.id)
+            ? { ...c, isAdded: true }
+            : c,
         );
+
+        setCandidates(finalCandidates);
+
+        // build sorted, unique list of cities and languages for filters
+        const uniqueCities = Array.from(citySet).sort((a, b) => a.localeCompare(b));
+        setLocationOptions(uniqueCities);
+        const uniqueLanguages = Array.from(languageSet).sort((a, b) => a.localeCompare(b));
+        setLanguageOptions(uniqueLanguages);
       } catch (error) {
         console.error("Failed to load interns", error);
       }
@@ -277,20 +485,52 @@ export default function EmployerDashboardPage() {
     setIsLoading(true);
     try {
       const newProjectNameTrimmed = newProjectName.trim();
+      const skills = projectSkillsInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
 
       const response = await apiRequest("POST", `/api/employer/${authEmployerId}/projects`, {
         projectName: newProjectNameTrimmed,
-        skills: [],
+        skills,
+        scopeOfWork: projectScope || undefined,
+        fullTimeOffer: projectFullTimeOffer,
+        locationType: projectLocationType || undefined,
+        pincode: projectPincode || undefined,
+        city: projectCity || undefined,
+        timezone: projectTimezone || undefined,
+        status: projectStatus || undefined,
       });
       const json = await response.json();
       const createdId = json?.project?.id ?? Date.now().toString();
 
-      const created: Project = { id: createdId, name: newProjectNameTrimmed, skills: [] };
+      const created: Project = {
+        id: createdId,
+        name: newProjectNameTrimmed,
+        skills,
+        scopeOfWork: projectScope,
+        fullTimeOffer: projectFullTimeOffer,
+        locationType: projectLocationType,
+        pincode: projectPincode,
+        city: projectCity,
+        timezone: projectTimezone,
+        status: projectStatus,
+      };
 
       setProjects(prev => [...prev, created]);
       setSelectedProject(created);
-      setSelectedSkills([]);
+      setSelectedSkills(skills);
       setNewProjectName("");
+      setProjectScope("");
+      setProjectFullTimeOffer(false);
+      setProjectLocationType("");
+      setProjectPincode("");
+      setProjectCity("");
+      setProjectTimezone("Asia/Kolkata");
+      setProjectStatus("active");
+      setProjectSkillsInput("");
+      setProjectSkillSearch("");
+      setProjectStep(1);
       setIsCreateDialogOpen(false);
       
       toast({
@@ -347,19 +587,54 @@ export default function EmployerDashboardPage() {
     if (!authEmployerId || !editingProject) return;
     setIsLoading(true);
     try {
+      const skills = projectSkillsInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
       await apiRequest("PUT", `/api/projects/${editingProject.id}`, {
         projectName: newProjectName.trim(),
+        skills,
+        scopeOfWork: projectScope || undefined,
+        fullTimeOffer: projectFullTimeOffer,
+        locationType: projectLocationType || undefined,
+        pincode: projectPincode || undefined,
+        city: projectCity || undefined,
+        timezone: projectTimezone || undefined,
+        status: projectStatus || undefined,
       });
 
+      const updatedProject: Project = {
+        ...editingProject,
+        name: newProjectName.trim(),
+        skills,
+        scopeOfWork: projectScope,
+        fullTimeOffer: projectFullTimeOffer,
+        locationType: projectLocationType,
+        pincode: projectPincode,
+        city: projectCity,
+        timezone: projectTimezone,
+        status: projectStatus,
+      };
+
       setProjects(prev =>
-        prev.map(p => (p.id === editingProject.id ? { ...p, name: newProjectName.trim() } : p)),
+        prev.map(p => (p.id === editingProject.id ? updatedProject : p)),
       );
       
       if (selectedProject.id === editingProject.id) {
-        setSelectedProject({ ...editingProject, name: newProjectName.trim() });
+        setSelectedProject(updatedProject);
+        setSelectedSkills(skills);
       }
       
       setNewProjectName("");
+      setProjectScope("");
+      setProjectFullTimeOffer(false);
+      setProjectLocationType("");
+      setProjectPincode("");
+      setProjectCity("");
+      setProjectTimezone("Asia/Kolkata");
+      setProjectStatus("active");
+      setProjectSkillsInput("");
       setEditingProject(null);
       setIsEditDialogOpen(false);
       
@@ -412,7 +687,17 @@ export default function EmployerDashboardPage() {
   const openEditDialog = (project: Project) => {
     setEditingProject(project);
     setNewProjectName(project.name);
-    setIsEditDialogOpen(true);
+    setProjectScope(project.scopeOfWork ?? "");
+    setProjectFullTimeOffer(!!project.fullTimeOffer);
+    setProjectLocationType(project.locationType ?? "");
+    setProjectPincode(project.pincode ?? "");
+    setProjectCity(project.city ?? "");
+    setProjectTimezone(project.timezone ?? "Asia/Kolkata");
+    setProjectStatus(project.status ?? "active");
+    setProjectSkillsInput((project.skills || []).join(", "));
+    setProjectStep(1);
+    setIsEditMode(true);
+    setIsCreateDialogOpen(true);
   };
 
   const openDeleteDialog = (project: Project) => {
@@ -469,121 +754,79 @@ export default function EmployerDashboardPage() {
       );
     }
 
+    if (selectedCity) {
+      const cityLower = selectedCity.toLowerCase();
+      list = list.filter((c) => {
+        const fromLocation = c.location.toLowerCase().includes(cityLower);
+        const fromPreferred = c.preferredLocations.some((loc) =>
+          loc.toLowerCase() === cityLower,
+        );
+        return fromLocation || fromPreferred;
+      });
+    }
+
+    if (hasLaptop) {
+      list = list.filter((c) => c.hasLaptop === true);
+    }
+
+    if (selectedLanguages.length > 0) {
+      list = list.filter((c) =>
+        c.languages.some((lang) => selectedLanguages.includes(lang)),
+      );
+    }
+
     if (minRating > 0) {
       list = list.filter((c) => c.aiRatings.interview >= minRating);
     }
 
     return list;
-  }, [candidates, filterBySkills, selectedSkills, minRating]);
+  }, [candidates, filterBySkills, selectedSkills, selectedCity, hasLaptop, selectedLanguages, minRating]);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (selectedCity) count++;
+    if (!includeRemote) count++;
+    if (hasLaptop) count++;
+    if (filterBySkills && selectedSkills.length > 0) count++;
+    if (selectedLanguages.length > 0) count++;
+    if (minRating > 0) count++;
+    return count;
+  }, [selectedCity, includeRemote, hasLaptop, filterBySkills, selectedSkills, selectedLanguages, minRating]);
+
+  const clearAllFilters = () => {
+    setSelectedCity(null);
+    setIncludeRemote(true);
+    setHasLaptop(false);
+    setFilterBySkills(true);
+    setSelectedSkills([]);
+    setSelectedLanguages([]);
+    setMinRating(0);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-teal-50/30">
-      {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-white/90 backdrop-blur-lg">
-        <div className="flex h-16 items-center justify-between px-4 md:px-6">
-          <div className="flex items-center gap-2">
-            <img src={findternLogo} alt="Findtern" className="h-10 w-auto" />
-            <div className="hidden sm:block">
-              <span className="text-lg font-bold text-emerald-700">FINDTERN</span>
-              <span className="text-xs text-slate-400 ml-1.5">INTERNSHIP SIMPLIFIED</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 md:gap-3">
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
-              <Check className="w-4 h-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-9 w-9 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-              onClick={() => setLocation("/proposals")}
-            >
-              <MessageSquare className="w-4 h-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-9 w-9 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-              onClick={() => setLocation("/employer/account")}
-            >
-              <Building2 className="w-4 h-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-9 w-9 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 relative"
-              onClick={() => setLocation("/employer/cart")}
-            >
-              <ShoppingCart className="w-4 h-4" />
-              {cartCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-semibold">
-                  {cartCount}
-                </span>
-              )}
-            </Button>
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg">
-              <Bell className="w-4 h-4" />
-            </Button>
-
-            {/* Company account dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-9 px-2 rounded-lg gap-1">
-                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-sm font-semibold">
-                    N
-                  </div>
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <div className="px-3 py-2 text-xs font-medium text-slate-500">Company Account</div>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer"
-                  onClick={() => setLocation("/employer/profile")}
-                >
-                  <Building2 className="w-4 h-4 text-emerald-600" />
-                  <span>Company Profile</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
-                  <Shield className="w-4 h-4 text-slate-600" />
-                  <span>Change Password (static)</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer"
-                  onClick={() => setLocation("/employer/account")}
-                >
-                  <ShoppingCart className="w-4 h-4 text-slate-700" />
-                  <span>Orders (static)</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer"
-                  onClick={() => setLocation("/employer/account")}
-                >
-                  <HelpCircle className="w-4 h-4 text-slate-600" />
-                  <span>Help & Support</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="flex items-center gap-2 cursor-pointer text-red-600 focus:text-red-600">
-                  <Trash2 className="w-4 h-4" />
-                  <span>Deactivate Account (static)</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="flex items-center gap-2 cursor-pointer"
-                  onClick={() => setLocation("/employer/login")}
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Sign Out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      </header>
+      <EmployerHeader active="dashboard" />
 
       <div className="flex">
         {/* Left Sidebar - Filters */}
         <aside className="w-72 min-h-[calc(100vh-64px)] border-r bg-white/70 backdrop-blur p-4 hidden lg:block">
+          {/* Filters header with active count */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-emerald-700 flex items-center gap-2">
+              <Filter className="w-4 h-4" />
+              Candidate Filters
+            </h2>
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="text-[11px] text-emerald-700 hover:text-emerald-800 hover:underline"
+              >
+                {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""} • Clear
+              </button>
+            )}
+          </div>
+
           {/* Projects Section */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3">
@@ -594,6 +837,16 @@ export default function EmployerDashboardPage() {
                 className="h-7 px-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                 onClick={() => {
                   setNewProjectName("");
+                  setProjectScope("");
+                  setProjectFullTimeOffer(false);
+                  setProjectLocationType("");
+                  setProjectPincode("");
+                  setProjectCity("");
+                  setProjectTimezone("Asia/Kolkata");
+                  setProjectStatus("active");
+                  setProjectSkillsInput("");
+                  setProjectSkillSearch("");
+                  setProjectStep(1);
                   setIsCreateDialogOpen(true);
                 }}
               >
@@ -673,11 +926,6 @@ export default function EmployerDashboardPage() {
 
           {/* Candidate Filters */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2 text-emerald-600">
-              <Filter className="w-4 h-4" />
-              <h3 className="text-sm font-semibold">Candidate Filters</h3>
-            </div>
-
             <Accordion type="multiple" defaultValue={["location", "device", "skills", "ratings"]} className="space-y-2">
               {/* Location Filter */}
               <AccordionItem value="location" className="border rounded-lg px-3">
@@ -688,15 +936,26 @@ export default function EmployerDashboardPage() {
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="pb-3 space-y-3">
-                  <Select>
+                  <Select
+                    value={selectedCity ?? "__all"}
+                    onValueChange={(value) => {
+                      if (value === "__all") {
+                        setSelectedCity(null);
+                      } else {
+                        setSelectedCity(value);
+                      }
+                    }}
+                  >
                     <SelectTrigger className="w-full h-9 text-sm rounded-lg border-slate-200">
                       <SelectValue placeholder="Select cities..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="jaipur">Jaipur</SelectItem>
-                      <SelectItem value="delhi">Delhi</SelectItem>
-                      <SelectItem value="mumbai">Mumbai</SelectItem>
-                      <SelectItem value="bangalore">Bangalore</SelectItem>
+                      <SelectItem value="__all">All locations</SelectItem>
+                      {locationOptions.map((city) => (
+                        <SelectItem key={city} value={city}>
+                          {city}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -738,7 +997,7 @@ export default function EmployerDashboardPage() {
                     Skills Filter
                   </div>
                 </AccordionTrigger>
-                <AccordionContent className="pb-3">
+                <AccordionContent className="pb-3 space-y-3">
                   <label className="flex items-center gap-2 text-sm cursor-pointer">
                     <Checkbox 
                       checked={filterBySkills} 
@@ -747,6 +1006,47 @@ export default function EmployerDashboardPage() {
                     />
                     <span className="text-slate-600">Filter candidates using selected skills</span>
                   </label>
+
+                  {/* Language filter */}
+                  {languageOptions.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-slate-600">Languages</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {languageOptions.slice(0, 12).map((lang) => {
+                          const active = selectedLanguages.includes(lang);
+                          return (
+                            <button
+                              key={lang}
+                              type="button"
+                              onClick={() => {
+                                setSelectedLanguages((prev) =>
+                                  prev.includes(lang)
+                                    ? prev.filter((l) => l !== lang)
+                                    : [...prev, lang],
+                                );
+                              }}
+                              className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+                                active
+                                  ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                                  : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                              }`}
+                            >
+                              {lang}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {selectedLanguages.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLanguages([])}
+                          className="text-[11px] text-emerald-700 hover:underline"
+                        >
+                          Clear language filter
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </AccordionContent>
               </AccordionItem>
 
@@ -1038,106 +1338,445 @@ export default function EmployerDashboardPage() {
         <HelpCircle className="w-5 h-5" />
       </Button>
 
-      {/* Create Project Dialog */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+      {/* Create / Edit Project Dialog (wizard) */}
+      <Dialog
+        open={isCreateDialogOpen}
+        onOpenChange={(open) => {
+          setIsCreateDialogOpen(open);
+          if (!open) {
+            setProjectStep(1);
+            setProjectSkillSearch("");
+            setIsEditMode(false);
+            setEditingProject(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FolderPlus className="w-5 h-5 text-emerald-600" />
-              Create New Project
+              {isEditMode ? "Edit Project" : "Create New Project"}
             </DialogTitle>
             <DialogDescription>
-              Enter a name for your new project. You can add skills and requirements later.
+              {isEditMode
+                ? "Update project details and internship requirements."
+                : "Define project details and internship requirements."}
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Input
-              placeholder="Enter project name..."
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              className="h-11 rounded-xl border-slate-200 focus:border-emerald-400"
-              onKeyPress={(e) => e.key === 'Enter' && handleCreateProject()}
-            />
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setIsCreateDialogOpen(false)}
-              className="rounded-lg"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateProject}
-              disabled={isLoading || !newProjectName.trim()}
-              className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Project
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="py-3 space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+            {/* Step indicator */}
+            <div className="flex items-center justify-center gap-6 text-xs font-medium text-slate-500">
+              {[1, 2, 3, 4].map((step) => (
+                <div key={step} className="flex items-center gap-2">
+                  <div
+                    className={
+                      "flex h-7 w-7 items-center justify-center rounded-full border text-xs " +
+                      (projectStep === step
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : step < projectStep
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : "bg-slate-50 text-slate-400 border-slate-200")
+                    }
+                  >
+                    {step}
+                  </div>
+                  <span
+                    className={
+                      projectStep === step
+                        ? "text-emerald-700"
+                        : step < projectStep
+                        ? "text-slate-700"
+                        : "text-slate-400"
+                    }
+                  >
+                    {step === 1 && "Project Name"}
+                    {step === 2 && "Skills"}
+                    {step === 3 && "Scope of Work"}
+                    {step === 4 && "Location"}
+                  </span>
+                </div>
+              ))}
+            </div>
 
-      {/* Edit Project Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Edit className="w-5 h-5 text-emerald-600" />
-              Edit Project
-            </DialogTitle>
-            <DialogDescription>
-              Update the project name below.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Input
-              placeholder="Enter project name..."
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              className="h-11 rounded-xl border-slate-200 focus:border-emerald-400"
-              onKeyPress={(e) => e.key === 'Enter' && handleEditProject()}
-            />
+            {/* Step content */}
+            {projectStep === 1 && (
+              <div className="mx-auto max-w-lg text-center space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">Enter Your Project Name</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Enter the name of the project you need resources for. You can always add more projects later.
+                  </p>
+                </div>
+                <div className="space-y-2 text-left">
+                  <label className="text-xs font-medium text-slate-600">Project Name *</label>
+                  <Input
+                    placeholder="e.g. Mobile App Development"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    className="h-11 rounded-xl border-slate-200 focus:border-emerald-400"
+                  />
+                </div>
+              </div>
+            )}
+
+            {projectStep === 2 && (
+              <div className="mx-auto max-w-xl space-y-5">
+                <div className="text-center space-y-1">
+                  <h3 className="text-lg font-semibold text-slate-800">What are the main skills required for this project?</h3>
+                  <p className="text-xs text-slate-500">Select skills (up to 7). For best results, add at least 4 skills in order of importance.</p>
+                </div>
+
+                <div className="space-y-3 bg-slate-50/80 rounded-2xl border border-slate-100 p-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600">Select skills</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        placeholder="Search and select skills..."
+                        value={projectSkillSearch}
+                        onChange={(e) => setProjectSkillSearch(e.target.value)}
+                        className="h-10 pl-9 rounded-xl border-slate-200 focus:border-emerald-400"
+                      />
+                      {projectSkillSearch && projectFilteredSkillOptions.length > 0 && (
+                        <div className="absolute z-50 mt-2 w-full max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg text-left text-sm">
+                          {projectFilteredSkillOptions.map((skill) => (
+                            <button
+                              key={skill}
+                              type="button"
+                              className="w-full px-3 py-2 text-left hover:bg-emerald-50"
+                              onClick={() => {
+                                if (!projectSkillList.includes(skill)) {
+                                  const next = [...projectSkillList, skill];
+                                  setProjectSkillsInput(next.join(", "));
+                                }
+                                setProjectSkillSearch("");
+                              }}
+                            >
+                              {skill}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <p className="flex items-center gap-1 text-[11px] text-slate-500">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      For the best results, add at least 4 skills.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {projectSkillList.map((skill) => (
+                      <Badge
+                        key={skill}
+                        variant="secondary"
+                        className="px-3 py-1 text-xs rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1"
+                      >
+                        {skill}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = projectSkillList.filter((s) => s !== skill);
+                            setProjectSkillsInput(next.join(", "));
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-[1.5fr_auto] gap-3 items-center">
+                    <Input
+                      placeholder="Enter custom skill"
+                      value={projectSkillSearch}
+                      onChange={(e) => setProjectSkillSearch(e.target.value)}
+                      className="h-10 rounded-xl border-slate-200 focus:border-emerald-400"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold flex items-center gap-1.5"
+                      onClick={() => {
+                        const value = projectSkillSearch.trim();
+                        if (!value) return;
+                        if (!projectSkillList.includes(value)) {
+                          const next = [...projectSkillList, value];
+                          setProjectSkillsInput(next.join(", "));
+                        }
+                        setProjectSkillSearch("");
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add Skill
+                    </Button>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500">
+                    Start typing and we'll suggest matching skills. Click a suggestion to auto-fill, then add it.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {projectStep === 3 && (
+              <div className="mx-auto max-w-xl space-y-5">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-semibold text-slate-800">Next, estimate the scope of your work</h3>
+                  <p className="text-xs text-slate-500">Choose the approximate duration for this internship project.</p>
+                </div>
+
+                <div className="space-y-2">
+                  {[{
+                    id: "short",
+                    label: "Short-Term: 30–60 days",
+                  },
+                  {
+                    id: "medium",
+                    label: "Medium-Term: 60–90 days",
+                  },
+                  {
+                    id: "long",
+                    label: "Long-Term: 90+ days",
+                  },
+                  {
+                    id: "not_sure",
+                    label: "Not sure",
+                  }].map((opt) => {
+                    const selected = projectScope === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setProjectScope(opt.id)}
+                        className={`w-full rounded-xl border px-4 py-3 flex items-center justify-between text-left text-sm transition-colors ${
+                          selected
+                            ? "border-emerald-400 bg-emerald-50 text-emerald-800"
+                            : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/40"
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        <span
+                          className={`h-4 w-4 rounded-full border ${
+                            selected
+                              ? "border-emerald-500 bg-emerald-500"
+                              : "border-slate-300 bg-white"
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-600">Additional details (optional)</label>
+                  <Textarea
+                    placeholder="Add any notes about working hours, milestones or expectations..."
+                    value={projectScope && !["short", "medium", "long", "not_sure"].includes(projectScope) ? projectScope : ""}
+                    onChange={(e) => setProjectScope(e.target.value)}
+                    className="min-h-[90px] rounded-xl border-slate-200 focus:border-emerald-400"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <Checkbox
+                    checked={projectFullTimeOffer}
+                    onCheckedChange={(val) => setProjectFullTimeOffer(!!val)}
+                    className="border-emerald-400 data-[state=checked]:bg-emerald-600"
+                  />
+                  <div className="text-xs text-slate-600">
+                    Would you consider offering a <span className="font-semibold text-emerald-700">full-time position</span> to the interns after this internship?
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {projectStep === 4 && (
+              <div className="mx-auto max-w-xl space-y-5">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-semibold text-slate-800">Internship Location</h3>
+                  <p className="text-xs text-slate-500">Choose how interns will work with your team.</p>
+                </div>
+
+                <div className="space-y-2">
+                  {["onsite", "hybrid", "remote"].map((mode) => {
+                    const selected = projectLocationType === mode;
+                    const label = mode === "onsite" ? "Onsite" : mode === "hybrid" ? "Hybrid" : "Remote";
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setProjectLocationType(mode)}
+                        className={`w-full rounded-xl border px-4 py-3 flex items-center justify-between text-left text-sm transition-colors ${
+                          selected
+                            ? "border-emerald-400 bg-emerald-50 text-emerald-800"
+                            : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/40"
+                        }`}
+                      >
+                        <span>{label}</span>
+                        <span
+                          className={`h-4 w-4 rounded-full border ${
+                            selected
+                              ? "border-emerald-500 bg-emerald-500"
+                              : "border-slate-300 bg-white"
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {(projectLocationType === "onsite" || projectLocationType === "hybrid") && (
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600">City & pincode</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        placeholder="City (e.g. Jaipur)"
+                        value={projectCity}
+                        onChange={(e) => setProjectCity(e.target.value)}
+                        className="h-10 rounded-xl border-slate-200 focus:border-emerald-400"
+                      />
+                      <Input
+                        placeholder="Pincode (e.g. 302001)"
+                        value={projectPincode}
+                        onChange={(e) => setProjectPincode(e.target.value)}
+                        className="h-10 rounded-xl border-slate-200 focus:border-emerald-400"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600">Select your timezone</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input
+                      placeholder="Search timezone..."
+                      value={projectTimezone}
+                      onChange={(e) => {
+                        setProjectTimezone(e.target.value);
+                        setIsTimezoneDropdownOpen(true);
+                      }}
+                      onFocus={() => setIsTimezoneDropdownOpen(true)}
+                      className="h-10 pl-9 rounded-xl border-slate-200 focus:border-emerald-400"
+                    />
+                    {isTimezoneDropdownOpen && (
+                      <div className="absolute z-50 mt-2 w-full max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg text-left text-sm">
+                        {TIMEZONES.filter((tz) => {
+                          const q = projectTimezone.toLowerCase();
+                          if (!q) return true;
+                          return (
+                            tz.id.toLowerCase().includes(q) ||
+                            tz.label.toLowerCase().includes(q)
+                          );
+                        }).map((tz) =>
+                          tz.disabled ? (
+                            <div
+                              key={tz.id}
+                              className="px-3 py-1.5 text-[11px] font-semibold text-slate-400 bg-slate-50"
+                            >
+                              {tz.label}
+                            </div>
+                          ) : (
+                            <button
+                              key={tz.id}
+                              type="button"
+                              className="w-full px-3 py-2 text-left hover:bg-emerald-50"
+                              onClick={() => {
+                                setProjectTimezone(tz.id);
+                                setIsTimezoneDropdownOpen(false);
+                              }}
+                            >
+                              {tz.label}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    This timezone will be used for scheduling and communication. Candidates may be in different time zones.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600">Status</label>
+                  <Select
+                    value={projectStatus}
+                    onValueChange={setProjectStatus}
+                  >
+                    <SelectTrigger className="h-10 rounded-xl border-slate-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="paused">Paused</SelectItem>
+                      <SelectItem value="closed">Closed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
               onClick={() => {
-                setIsEditDialogOpen(false);
+                setIsCreateDialogOpen(false);
+                setProjectStep(1);
+                setIsEditMode(false);
                 setEditingProject(null);
-                setNewProjectName("");
               }}
               className="rounded-lg"
             >
               Cancel
             </Button>
-            <Button
-              onClick={handleEditProject}
-              disabled={isLoading || !newProjectName.trim()}
-              className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Check className="w-4 h-4 mr-2" />
-                  Save Changes
-                </>
-              )}
-            </Button>
+            {projectStep > 1 && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setProjectStep((prev) => Math.max(1, prev - 1))}
+                className="rounded-lg"
+              >
+                Back
+              </Button>
+            )}
+            {projectStep < 4 && (
+              <Button
+                type="button"
+                onClick={() => setProjectStep((prev) => Math.min(4, prev + 1))}
+                disabled={
+                  (projectStep === 1 && !newProjectName.trim()) ||
+                  (projectStep === 2 && projectSkillList.length < 4) ||
+                  (projectStep === 3 && !projectScope.trim())
+                }
+                className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+              >
+                Continue
+              </Button>
+            )}
+            {projectStep === 4 && (
+              <Button
+                onClick={isEditMode ? handleEditProject : handleCreateProject}
+                disabled={isLoading || !newProjectName.trim()}
+                className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {isEditMode ? "Saving..." : "Creating..."}
+                  </>
+                ) : (
+                  <>
+                    {isEditMode ? (
+                      <Check className="w-4 h-4 mr-2" />
+                    ) : (
+                      <Plus className="w-4 h-4 mr-2" />
+                    )}
+                    {isEditMode ? "Save Changes" : "Create Project"}
+                  </>
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

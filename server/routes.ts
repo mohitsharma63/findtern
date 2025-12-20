@@ -8,6 +8,11 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -272,6 +277,48 @@ export async function registerRoutes(
     return res.json({ employer: safeEmployer });
   });
 
+  // Employer: change own password
+  app.post("/api/employer/:id/change-password", async (req, res) => {
+    try {
+      const employerId = req.params.id;
+      const body = changePasswordSchema.parse(req.body);
+
+      const employer = await storage.getEmployer(employerId);
+      if (!employer) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      if (employer.password !== body.currentPassword) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      const updated = await storage.updateEmployer(employerId, {
+        password: body.newPassword,
+      } as any);
+
+      if (!updated) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      const { password, ...safeEmployer } = updated;
+      return res.json({
+        message: "Password updated successfully",
+        employer: safeEmployer,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+      console.error("Employer change password error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while changing password" });
+    }
+  });
+
   // Admin: update employer
   app.put("/api/admin/employers/:id", async (req, res) => {
     const updated = await storage.updateEmployer(req.params.id, req.body);
@@ -387,6 +434,28 @@ export async function registerRoutes(
     }
   });
 
+  // Employer: deactivate own account (hard delete for now)
+  app.post("/api/employer/:id/deactivate", async (req, res) => {
+    try {
+      const employerId = req.params.id;
+      const employer = await storage.getEmployer(employerId);
+      if (!employer) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      await storage.deleteEmployer(employerId);
+
+      return res.json({
+        message: "Employer account deactivated",
+      });
+    } catch (error) {
+      console.error("Employer deactivate error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while deactivating account" });
+    }
+  });
+
   // List projects for an employer
   app.get("/api/employer/:id/projects", async (req, res) => {
     const projects = await storage.getProjectsByEmployerId(req.params.id);
@@ -425,7 +494,10 @@ export async function registerRoutes(
   // Update a project
   app.put("/api/projects/:projectId", async (req, res) => {
     try {
-      const updated = await storage.updateProject(req.params.projectId, req.body as any);
+      const updated = await storage.updateProject(
+        req.params.projectId,
+        req.body as any,
+      );
       if (!updated) {
         return res.status(404).json({ message: "Project not found" });
       }
@@ -448,6 +520,182 @@ export async function registerRoutes(
       return res
         .status(500)
         .json({ message: "An error occurred while deleting project" });
+    }
+  });
+
+  // ---------------------------------------------
+  // Interviews (Employer & Intern)
+  // ---------------------------------------------
+
+  const createInterviewSchema = z.object({
+    internId: z.string().min(1),
+    projectId: z.string().min(1).optional().nullable(),
+    timezone: z.string().min(1),
+    slots: z.array(z.string().min(1)).min(1).max(3), // ISO local strings
+    notes: z.string().optional(),
+  });
+
+  // Employer: create interview with up to 3 slots
+  app.post("/api/employer/:employerId/interviews", async (req, res) => {
+    try {
+      const employerId = req.params.employerId;
+      const body = createInterviewSchema.parse(req.body);
+
+      const employer = await storage.getEmployer(employerId);
+      if (!employer) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      // Parse slot strings into Date objects (assumed in employer's local time)
+      const [s1, s2, s3] = body.slots;
+      const slot1 = s1 ? new Date(s1) : undefined;
+      const slot2 = s2 ? new Date(s2) : undefined;
+      const slot3 = s3 ? new Date(s3) : undefined;
+
+      const randomSlug = Math.random().toString(36).slice(2, 10);
+      const meetingLink = `https://meet.google.com/${randomSlug}`;
+
+      const interview = await storage.createInterview({
+        employerId,
+        internId: body.internId,
+        projectId: body.projectId ?? null,
+        status: "pending",
+        slot1: slot1 as any,
+        slot2: slot2 as any,
+        slot3: slot3 as any,
+        timezone: body.timezone,
+        meetingLink,
+        notes: body.notes ?? null,
+      } as any);
+
+      return res.status(201).json({
+        message: "Interview slots created",
+        interview,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+      console.error("Create interview error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while creating interview" });
+    }
+  });
+
+  // Intern: list own interviews
+  app.get("/api/intern/:internId/interviews", async (req, res) => {
+    try {
+      const internId = req.params.internId;
+      const interviews = await storage.getInterviewsByInternId(internId);
+      return res.json({ interviews });
+    } catch (error) {
+      console.error("List intern interviews error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while fetching interviews" });
+    }
+  });
+
+  // Employer: list own interviews with basic intern & project info
+  app.get("/api/employer/:employerId/interviews", async (req, res) => {
+    try {
+      const employerId = req.params.employerId;
+
+      const employer = await storage.getEmployer(employerId);
+      if (!employer) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      const items = await storage.getInterviewsByEmployerId(employerId);
+
+      const enriched = await Promise.all(
+        items.map(async (i) => {
+          const intern = await storage.getUser(i.internId).catch(() => undefined);
+          const project = i.projectId
+            ? await storage.getProject(i.projectId).catch(() => undefined)
+            : undefined;
+
+          const internName = intern
+            ? `${intern.firstName ?? ""} ${intern.lastName ?? ""}`.trim() || "Intern"
+            : "Intern";
+
+          return {
+            ...i,
+            internName,
+            projectName: project?.projectName ?? null,
+          };
+        }),
+      );
+
+      return res.json({ interviews: enriched });
+    } catch (error) {
+      console.error("List employer interviews error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while fetching interviews" });
+    }
+  });
+
+  // Intern: select a slot
+  const selectSlotSchema = z.object({
+    slot: z.number().int().min(1).max(3),
+  });
+
+  app.post("/api/interviews/:id/select-slot", async (req, res) => {
+    try {
+      const interviewId = req.params.id;
+      const body = selectSlotSchema.parse(req.body);
+
+      const updated = await storage.updateInterviewSelectedSlot(
+        interviewId,
+        body.slot,
+      );
+
+      if (!updated) {
+        return res.status(404).json({ message: "Interview not found" });
+      }
+
+      return res.json({
+        message: "Slot selected",
+        interview: updated,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+      console.error("Select interview slot error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while selecting slot" });
+    }
+  });
+
+  // Employer: reschedule (reset to pending, clear selected slot)
+  app.post("/api/interviews/:id/reschedule", async (req, res) => {
+    try {
+      const interviewId = req.params.id;
+
+      const updated = await storage.resetInterviewToPending(interviewId);
+      if (!updated) {
+        return res.status(404).json({ message: "Interview not found" });
+      }
+
+      return res.json({
+        message: "Interview reset to pending",
+        interview: updated,
+      });
+    } catch (error) {
+      console.error("Reschedule interview error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while rescheduling interview" });
     }
   });
 
@@ -669,6 +917,215 @@ export async function registerRoutes(
       return res
         .status(500)
         .json({ message: "An error occurred while fetching user" });
+    }
+  });
+
+  // ---------------------------------------------
+  // Proposals: create + list + status update
+  // ---------------------------------------------
+
+  const createProposalSchema = z.object({
+    internId: z.string().min(1),
+    projectId: z.string().min(1),
+    interviewId: z.string().optional(),
+    flowType: z.enum(["direct", "interview_first"]),
+    status: z
+      .enum(["draft", "sent", "accepted", "rejected", "interview_scheduled"])
+      .optional(),
+    offerDetails: z.record(z.any()).optional(),
+    aiRatings: z
+      .object({
+        communication: z.number().optional(),
+        coding: z.number().optional(),
+        aptitude: z.number().optional(),
+        overall: z.number().optional(),
+      })
+      .optional(),
+    skills: z.array(z.string()).optional(),
+  });
+
+  // Employer: create a hiring proposal for an intern
+  app.post("/api/employer/:employerId/proposals", async (req, res) => {
+    try {
+      const employerId = req.params.employerId;
+
+      // Basic existence checks
+      const employer = await storage.getEmployer(employerId);
+      if (!employer) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      const data = createProposalSchema.parse(req.body);
+
+      const intern = await storage.getUser(data.internId);
+      if (!intern) {
+        return res.status(404).json({ message: "Intern not found" });
+      }
+
+      const projects = await storage.getProjectsByEmployerId(employerId);
+      const project = projects.find((p) => p.id === data.projectId);
+      if (!project) {
+        return res
+          .status(400)
+          .json({ message: "Project does not belong to this employer" });
+      }
+
+      const proposal = await storage.createProposal({
+        employerId,
+        internId: data.internId,
+        projectId: data.projectId,
+        flowType: data.flowType,
+        status: data.status ?? "sent",
+        offerDetails: data.offerDetails ?? {},
+        aiRatings: data.aiRatings ?? {},
+        skills: data.skills ?? [],
+      } as any);
+
+      return res.status(201).json({
+        message: "Proposal created",
+        proposal,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+      console.error("Create proposal error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while creating proposal" });
+    }
+  });
+
+  // Employer: list proposals they have sent
+  app.get("/api/employer/:employerId/proposals", async (req, res) => {
+    try {
+      const employerId = req.params.employerId;
+      const employer = await storage.getEmployer(employerId);
+      if (!employer) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      const proposals = await storage.getProposalsByEmployerId(employerId);
+      return res.json({ proposals });
+    } catch (error) {
+      console.error("List employer proposals error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while fetching proposals" });
+    }
+  });
+
+  // Intern: list proposals received
+  app.get("/api/intern/:internId/proposals", async (req, res) => {
+    try {
+      const internId = req.params.internId;
+      const intern = await storage.getUser(internId);
+      if (!intern) {
+        return res.status(404).json({ message: "Intern not found" });
+      }
+
+      const proposals = await storage.getProposalsByInternId(internId);
+      return res.json({ proposals });
+    } catch (error) {
+      console.error("List intern proposals error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while fetching proposals" });
+    }
+  });
+
+  // Get single proposal by ID
+  app.get("/api/proposals/:id", async (req, res) => {
+    try {
+      const proposal = await storage.getProposal(req.params.id);
+      if (!proposal) {
+        return res.status(404).json({ message: "Proposal not found" });
+      }
+      return res.json({ proposal });
+    } catch (error) {
+      console.error("Get proposal error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while fetching proposal" });
+    }
+  });
+
+  // Employer: update proposal fields (offer details, skills, ratings, status)
+  app.put("/api/proposals/:id", async (req, res) => {
+    try {
+      const updateSchema = createProposalSchema
+        .partial()
+        .extend({
+          status: z
+            .enum(["draft", "sent", "accepted", "rejected", "interview_scheduled"])
+            .optional(),
+        });
+
+      const data = updateSchema.parse(req.body);
+
+      const existing = await storage.getProposal(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Proposal not found" });
+      }
+
+      const updated = await storage.updateProposal(req.params.id, data as any);
+      if (!updated) {
+        return res.status(404).json({ message: "Proposal not found" });
+      }
+
+      return res.json({
+        message: "Proposal updated",
+        proposal: updated,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+      console.error("Update proposal error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while updating proposal" });
+    }
+  });
+
+  // Intern: update proposal status (accept / reject etc.)
+  app.patch("/api/proposals/:id/status", async (req, res) => {
+    try {
+      const statusSchema = z.enum([
+        "draft",
+        "sent",
+        "accepted",
+        "rejected",
+        "interview_scheduled",
+      ]);
+      const status = statusSchema.parse(req.body.status);
+
+      const updated = await storage.updateProposalStatus(req.params.id, status);
+      if (!updated) {
+        return res.status(404).json({ message: "Proposal not found" });
+      }
+
+      return res.json({
+        message: "Proposal status updated",
+        proposal: updated,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+      console.error("Update proposal status error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while updating proposal status" });
     }
   });
 
