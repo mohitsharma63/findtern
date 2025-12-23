@@ -7,6 +7,10 @@ import {
   insertInternDocumentsSchema,
 } from "@shared/schema";
 import { z } from "zod";
+import { google } from "googleapis";
+import { v4 as uuidv4 } from "uuid";
+import fs from "fs";
+import path from "path";
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
@@ -17,6 +21,84 @@ const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
+
+function getCalendarClient() {
+  const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH;
+  const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+
+  if (!keyPath || !serviceAccountEmail) {
+    throw new Error("Google service account env vars are not configured");
+  }
+
+  const scopes = ["https://www.googleapis.com/auth/calendar"]; 
+
+  const keyFile = path.resolve(keyPath);
+  const keyContent = JSON.parse(fs.readFileSync(keyFile, "utf8"));
+
+  const jwtClient = new google.auth.JWT(
+    serviceAccountEmail,
+    undefined,
+    keyContent.private_key,
+    scopes,
+    undefined,
+  );
+
+  const calendar = google.calendar({ version: "v3", auth: jwtClient });
+  return calendar;
+}
+
+async function createGoogleMeetLink(opts: {
+  summary: string;
+  description?: string;
+  startTime: Date;
+  endTime: Date;
+  timezone: string;
+}) {
+  const calendar = getCalendarClient();
+  const calendarId = process.env.MEET_CALENDAR_ID || "primary";
+
+  const requestId = uuidv4();
+
+  const eventResponse = await calendar.events.insert({
+    calendarId,
+    conferenceDataVersion: 1,
+    requestBody: {
+      summary: opts.summary,
+      description: opts.description ?? "",
+      start: {
+        dateTime: opts.startTime.toISOString(),
+        timeZone: opts.timezone,
+      },
+      end: {
+        dateTime: opts.endTime.toISOString(),
+        timeZone: opts.timezone,
+      },
+      conferenceData: {
+        createRequest: {
+          requestId,
+          conferenceSolutionKey: { type: "hangoutsMeet" },
+        },
+      },
+    },
+  });
+
+  const event = eventResponse.data;
+
+  const hangoutLink =
+    event.hangoutLink ||
+    event.conferenceData?.entryPoints?.find(
+      (e) => e.entryPointType === "video",
+    )?.uri;
+
+  if (!hangoutLink) {
+    throw new Error("Failed to create Google Meet link");
+  }
+
+  return {
+    meetingLink: hangoutLink,
+    eventId: event.id,
+  };
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -510,82 +592,6 @@ export async function registerRoutes(
     }
   });
 
-  // Delete a project
-  app.delete("/api/projects/:projectId", async (req, res) => {
-    try {
-      await storage.deleteProject(req.params.projectId);
-      return res.status(204).send();
-    } catch (error) {
-      console.error("Employer project delete error:", error);
-      return res
-        .status(500)
-        .json({ message: "An error occurred while deleting project" });
-    }
-  });
-
-  // ---------------------------------------------
-  // Interviews (Employer & Intern)
-  // ---------------------------------------------
-
-  const createInterviewSchema = z.object({
-    internId: z.string().min(1),
-    projectId: z.string().min(1).optional().nullable(),
-    timezone: z.string().min(1),
-    slots: z.array(z.string().min(1)).min(1).max(3), // ISO local strings
-    notes: z.string().optional(),
-  });
-
-  // Employer: create interview with up to 3 slots
-  app.post("/api/employer/:employerId/interviews", async (req, res) => {
-    try {
-      const employerId = req.params.employerId;
-      const body = createInterviewSchema.parse(req.body);
-
-      const employer = await storage.getEmployer(employerId);
-      if (!employer) {
-        return res.status(404).json({ message: "Employer not found" });
-      }
-
-      // Parse slot strings into Date objects (assumed in employer's local time)
-      const [s1, s2, s3] = body.slots;
-      const slot1 = s1 ? new Date(s1) : undefined;
-      const slot2 = s2 ? new Date(s2) : undefined;
-      const slot3 = s3 ? new Date(s3) : undefined;
-
-      const randomSlug = Math.random().toString(36).slice(2, 10);
-      const meetingLink = `https://meet.google.com/${randomSlug}`;
-
-      const interview = await storage.createInterview({
-        employerId,
-        internId: body.internId,
-        projectId: body.projectId ?? null,
-        status: "pending",
-        slot1: slot1 as any,
-        slot2: slot2 as any,
-        slot3: slot3 as any,
-        timezone: body.timezone,
-        meetingLink,
-        notes: body.notes ?? null,
-      } as any);
-
-      return res.status(201).json({
-        message: "Interview slots created",
-        interview,
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          message: "Validation failed",
-          errors: error.errors,
-        });
-      }
-      console.error("Create interview error:", error);
-      return res
-        .status(500)
-        .json({ message: "An error occurred while creating interview" });
-    }
-  });
-
   // Intern: list own interviews
   app.get("/api/intern/:internId/interviews", async (req, res) => {
     try {
@@ -600,45 +606,45 @@ export async function registerRoutes(
     }
   });
 
-  // Employer: list own interviews with basic intern & project info
-  app.get("/api/employer/:employerId/interviews", async (req, res) => {
-    try {
-      const employerId = req.params.employerId;
+// Employer: list own interviews with basic intern & project info
+app.get("/api/employer/:employerId/interviews", async (req, res) => {
+  try {
+    const employerId = req.params.employerId;
 
-      const employer = await storage.getEmployer(employerId);
-      if (!employer) {
-        return res.status(404).json({ message: "Employer not found" });
-      }
-
-      const items = await storage.getInterviewsByEmployerId(employerId);
-
-      const enriched = await Promise.all(
-        items.map(async (i) => {
-          const intern = await storage.getUser(i.internId).catch(() => undefined);
-          const project = i.projectId
-            ? await storage.getProject(i.projectId).catch(() => undefined)
-            : undefined;
-
-          const internName = intern
-            ? `${intern.firstName ?? ""} ${intern.lastName ?? ""}`.trim() || "Intern"
-            : "Intern";
-
-          return {
-            ...i,
-            internName,
-            projectName: project?.projectName ?? null,
-          };
-        }),
-      );
-
-      return res.json({ interviews: enriched });
-    } catch (error) {
-      console.error("List employer interviews error:", error);
-      return res
-        .status(500)
-        .json({ message: "An error occurred while fetching interviews" });
+    const employer = await storage.getEmployer(employerId);
+    if (!employer) {
+      return res.status(404).json({ message: "Employer not found" });
     }
-  });
+
+    const items = await storage.getInterviewsByEmployerId(employerId);
+
+    const enriched = await Promise.all(
+      items.map(async (i) => {
+        const intern = await storage.getUser(i.internId).catch(() => undefined);
+        const project = i.projectId
+          ? await storage.getProject(i.projectId).catch(() => undefined)
+          : undefined;
+
+        const internName = intern
+          ? `${intern.firstName ?? ""} ${intern.lastName ?? ""}`.trim() || "Intern"
+          : "Intern";
+
+        return {
+          ...i,
+          internName,
+          projectName: project?.projectName ?? null,
+        };
+      }),
+    );
+
+    return res.json({ interviews: enriched });
+  } catch (error) {
+    console.error("List employer interviews error:", error);
+    return res
+      .status(500)
+      .json({ message: "An error occurred while fetching interviews" });
+  }
+});
 
   // Intern: select a slot
   const selectSlotSchema = z.object({
@@ -673,7 +679,7 @@ export async function registerRoutes(
       console.error("Select interview slot error:", error);
       return res
         .status(500)
-        .json({ message: "An error occurred while selecting slot" });
+        .json({ message: "An error occurred while selecting interview slot" });
     }
   });
 
@@ -696,6 +702,60 @@ export async function registerRoutes(
       return res
         .status(500)
         .json({ message: "An error occurred while rescheduling interview" });
+    }
+  });
+
+  // Mark interview as missed (after selected slot + 15 min grace window)
+  app.post("/api/interviews/:id/mark-missed", async (req, res) => {
+    try {
+      const interviewId = req.params.id;
+
+      const interview = await storage.getInterview(interviewId);
+      if (!interview) {
+        return res.status(404).json({ message: "Interview not found" });
+      }
+
+      if (interview.status !== "scheduled") {
+        return res.status(400).json({ message: "Only scheduled interviews can be marked as missed" });
+      }
+
+      if (!interview.selectedSlot) {
+        return res.status(400).json({ message: "No selected slot to evaluate for missed status" });
+      }
+
+      const selectedKey = `slot${interview.selectedSlot}` as keyof typeof interview;
+      const slotValue = interview[selectedKey];
+
+      if (!slotValue) {
+        return res.status(400).json({ message: "Selected slot time is not set" });
+      }
+
+      const slotTime = new Date(slotValue as any);
+      if (Number.isNaN(slotTime.getTime())) {
+        return res.status(400).json({ message: "Selected slot time is invalid" });
+      }
+
+      const now = new Date();
+      const graceMs = 15 * 60 * 1000;
+
+      if (now.getTime() <= slotTime.getTime() + graceMs) {
+        return res.status(400).json({ message: "Interview slot has not passed the grace window yet" });
+      }
+
+      const updated = await storage.updateInterviewStatus(interviewId, "missed");
+      if (!updated) {
+        return res.status(404).json({ message: "Interview not found" });
+      }
+
+      return res.json({
+        message: "Interview marked as missed",
+        interview: updated,
+      });
+    } catch (error) {
+      console.error("Mark interview missed error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while marking interview as missed" });
     }
   });
 

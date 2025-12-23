@@ -117,6 +117,30 @@ export default function InterviewsPage() {
     }
   };
 
+  const getEffectiveStatus = (interview: any) => {
+    const rawStatus = interview.status || "pending";
+
+    if (rawStatus !== "scheduled" || !interview.selectedSlot) {
+      return rawStatus;
+    }
+
+    const selectedKey = `slot${interview.selectedSlot}` as const;
+    const slotValue = interview[selectedKey];
+    if (!slotValue) return rawStatus;
+
+    const slotTime = new Date(slotValue);
+    if (Number.isNaN(slotTime.getTime())) return rawStatus;
+
+    const now = new Date();
+    const graceMs = 15 * 60 * 1000;
+
+    if (now.getTime() > slotTime.getTime() + graceMs) {
+      return "missed";
+    }
+
+    return rawStatus;
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -223,7 +247,7 @@ export default function InterviewsPage() {
                         </p>
                       </div>
                       <Badge variant="outline" className="text-xs">
-                        {interview.status || "pending"}
+                        {getEffectiveStatus(interview) || "pending"}
                       </Badge>
                     </div>
 
@@ -236,12 +260,25 @@ export default function InterviewsPage() {
 
                       {([1, 2, 3] as const).map((n) => {
                         const key = `slot${n}` as const;
-                        const label = formatSlot(interview[key]);
+                        const rawSlotValue = interview[key];
+                        const label = formatSlot(rawSlotValue);
                         if (!label) return null;
 
+                        const effectiveStatus = getEffectiveStatus(interview);
                         const isSelected = interview.selectedSlot === n;
-                        const isPending = interview.status === "pending";
+                        const isPending = effectiveStatus === "pending";
+                        const isMissed = effectiveStatus === "missed";
                         const selectKey = interview.id + "-" + n;
+
+                        let isFutureSlot = false;
+                        if (rawSlotValue) {
+                          const slotDate = new Date(rawSlotValue);
+                          if (!Number.isNaN(slotDate.getTime())) {
+                            isFutureSlot = slotDate.getTime() > Date.now();
+                          }
+                        }
+
+                        const canSelect = (isPending || isMissed) && isFutureSlot;
 
                         return (
                           <div
@@ -263,7 +300,7 @@ export default function InterviewsPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                disabled={!isPending || selectingId === selectKey}
+                                disabled={!canSelect || selectingId === selectKey}
                                 onClick={() => handleSelectSlot(interview.id, n)}
                               >
                                 {selectingId === selectKey ? "Confirming..." : "Choose this time"}
@@ -274,8 +311,8 @@ export default function InterviewsPage() {
                       })}
                     </div>
 
-                    {/* Meeting link (only after candidate has selected a slot) */}
-                    {interview.status === "scheduled" &&
+                    {/* Meeting link (only after candidate has selected a slot and within valid time window) */}
+                    {getEffectiveStatus(interview) === "scheduled" &&
                       !!interview.selectedSlot &&
                       !!interview.meetingLink && (
                       <div className="pt-2 border-t mt-2">

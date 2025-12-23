@@ -86,6 +86,8 @@ export interface IStorage {
   getInterviewsByEmployerId(employerId: string): Promise<Interview[]>;
   updateInterviewSelectedSlot(id: string, selectedSlot: number): Promise<Interview | undefined>;
   resetInterviewToPending(id: string): Promise<Interview | undefined>;
+  getInterview(id: string): Promise<Interview | undefined>;
+  updateInterviewStatus(id: string, status: string): Promise<Interview | undefined>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -323,6 +325,14 @@ export class PostgresStorage implements IStorage {
     return result;
   }
 
+  async getInterview(id: string): Promise<Interview | undefined> {
+    const [interview] = await db
+      .select()
+      .from(interviews)
+      .where(eq(interviews.id, id));
+    return interview;
+  }
+
   async updateInterviewSelectedSlot(
     id: string,
     selectedSlot: number,
@@ -347,6 +357,18 @@ export class PostgresStorage implements IStorage {
         selectedSlot: null,
         updatedAt: new Date(),
       } as any)
+      .where(eq(interviews.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateInterviewStatus(
+    id: string,
+    status: string,
+  ): Promise<Interview | undefined> {
+    const [updated] = await db
+      .update(interviews)
+      .set({ status, updatedAt: new Date() } as any)
       .where(eq(interviews.id, id))
       .returning();
     return updated;
