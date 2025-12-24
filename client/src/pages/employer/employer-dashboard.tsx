@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Plus,
   X,
+  RotateCcw,
   ShoppingCart,
   MessageSquare,
   Building2,
@@ -287,10 +288,16 @@ export default function EmployerDashboardPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [skillSearch, setSkillSearch] = useState("");
   const [isSkillDropdownOpen, setIsSkillDropdownOpen] = useState(false);
+  const [skillsBackup, setSkillsBackup] = useState<string[]>([]);
   const [locationOptions, setLocationOptions] = useState<string[]>([]);
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
   const [languageOptions, setLanguageOptions] = useState<string[]>([]);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
+
+  const selectedSkillsLowerSet = useMemo(
+    () => new Set(selectedSkills.map((s) => s.toLowerCase())),
+    [selectedSkills],
+  );
 
   useEffect(() => {
     const auth = getEmployerAuth();
@@ -334,12 +341,19 @@ export default function EmployerDashboardPage() {
         if (list.length > 0) {
           setSelectedProject(list[0]);
           setSelectedSkills(list[0].skills);
+          setSkillsBackup(list[0].skills);
         }
       } catch (error) {
         console.error(error);
       }
     })();
   }, [setLocation]);
+
+  useEffect(() => {
+    if (selectedSkills.length > 0) {
+      setSkillsBackup(selectedSkills);
+    }
+  }, [selectedSkills]);
 
   // Load intern candidates dynamically from backend
   useEffect(() => {
@@ -621,7 +635,7 @@ export default function EmployerDashboardPage() {
         prev.map(p => (p.id === editingProject.id ? updatedProject : p)),
       );
       
-      if (selectedProject.id === editingProject.id) {
+      if (selectedProject && selectedProject.id === editingProject.id) {
         setSelectedProject(updatedProject);
         setSelectedSkills(skills);
       }
@@ -662,7 +676,7 @@ export default function EmployerDashboardPage() {
       setProjects(remainingProjects);
       
       // If deleted project was selected, select the first available
-      if (selectedProject.id === editingProject.id && remainingProjects.length > 0) {
+      if (selectedProject && selectedProject.id === editingProject.id && remainingProjects.length > 0) {
         setSelectedProject(remainingProjects[0]);
       }
       
@@ -750,7 +764,7 @@ export default function EmployerDashboardPage() {
 
     if (filterBySkills && selectedSkills.length > 0) {
       list = list.filter((c) =>
-        c.skills.some((skill) => selectedSkills.includes(skill)),
+        c.skills.some((skill) => selectedSkillsLowerSet.has(skill.toLowerCase())),
       );
     }
 
@@ -779,8 +793,25 @@ export default function EmployerDashboardPage() {
       list = list.filter((c) => c.aiRatings.interview >= minRating);
     }
 
+    if (selectedSkills.length > 0) {
+      list.sort((a, b) => {
+        const aMatchCount = a.skills.reduce((acc, s) => {
+          return acc + (selectedSkillsLowerSet.has(s.toLowerCase()) ? 1 : 0);
+        }, 0);
+        const bMatchCount = b.skills.reduce((acc, s) => {
+          return acc + (selectedSkillsLowerSet.has(s.toLowerCase()) ? 1 : 0);
+        }, 0);
+
+        if (bMatchCount !== aMatchCount) return bMatchCount - aMatchCount;
+        if ((b.findternScore ?? 0) !== (a.findternScore ?? 0)) {
+          return (b.findternScore ?? 0) - (a.findternScore ?? 0);
+        }
+        return (a.name ?? "").localeCompare(b.name ?? "");
+      });
+    }
+
     return list;
-  }, [candidates, filterBySkills, selectedSkills, selectedCity, hasLaptop, selectedLanguages, minRating]);
+  }, [candidates, filterBySkills, selectedSkills, selectedSkillsLowerSet, selectedCity, hasLaptop, selectedLanguages, minRating]);
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -1119,8 +1150,24 @@ export default function EmployerDashboardPage() {
               </div>
 
               {/* Skill search + dropdown */}
-              <div className="relative w-full md:w-64">
-                <div className="relative">
+              <div className="relative w-full md:w-64 flex flex-col items-end gap-2">
+                {selectedSkills.length === 0 && skillsBackup.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedSkills(skillsBackup);
+                      setSkillSearch("");
+                      setIsSkillDropdownOpen(false);
+                    }}
+                    className="h-9 px-3 rounded-xl border-slate-200"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Restore skills
+                  </Button>
+                )}
+                <div className="relative w-full">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <Input
                     placeholder="Search & add skills..."
@@ -1257,8 +1304,8 @@ export default function EmployerDashboardPage() {
                             key={idx}
                             variant="outline"
                             className={`text-xs px-2 py-0.5 rounded-full ${
-                              candidate.matchedSkills.includes(skill)
-                                ? "bg-amber-50 border-amber-300 text-amber-700"
+                              selectedSkillsLowerSet.has(skill.toLowerCase())
+                                ? "bg-emerald-50 border-emerald-300 text-emerald-700"
                                 : "bg-slate-50 border-slate-200 text-slate-600"
                             }`}
                           >

@@ -9,6 +9,7 @@ import NotFound from "@/pages/not-found";
 import OnboardingLoadingPage from "@/pages/onboarding-loading";
 import OnboardingPage from "@/pages/onboarding";
 import DashboardPage from "@/pages/dashboard";
+import DashboardDocumentsPage from "@/pages/dashboard-documents";
 import InterviewsPage from "@/pages/interviews";
 import ProposalsPage from "@/pages/proposals";
 import ProposalDetailPage from "@/pages/proposal-detail";
@@ -128,6 +129,7 @@ function Router() {
       <Route path="/onboarding-loading" component={OnboardingLoadingPage} />
       <Route path="/onboarding" component={OnboardingPage} />
       <Route path="/dashboard" component={DashboardPage} />
+      <Route path="/dashboard/documents" component={DashboardDocumentsPage} />
       <Route path="/interviews" component={InterviewsPage} />
       <Route path="/proposals" component={ProposalsPage} />
       <Route path="/proposals/:id" component={ProposalDetailPage} />

@@ -15,14 +15,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { insertUserSchema, type InsertUser, countryCodes } from "@shared/schema";
+import { insertUserSchema, type InsertUser } from "@shared/schema";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -117,7 +110,6 @@ export default function SignupPage() {
       countryCode: "+91",
       phoneNumber: "",
       password: "",
-      role: "intern",
       agreedToTerms: false,
     },
   });
@@ -133,6 +125,15 @@ export default function SignupPage() {
       if (data.user?.id) {
         localStorage.setItem("userId", data.user.id);
         localStorage.setItem("userEmail", data.user.email);
+        try {
+          const currentValues = form.getValues();
+          localStorage.setItem("signupFirstName", currentValues.firstName || "");
+          localStorage.setItem("signupLastName", currentValues.lastName || "");
+          localStorage.setItem("signupCountryCode", currentValues.countryCode || "+91");
+          localStorage.setItem("signupPhoneNumber", currentValues.phoneNumber || "");
+        } catch {
+          // ignore
+        }
         console.log("Stored userId:", data.user.id);
         console.log("Stored userEmail:", data.user.email);
       } else {
@@ -326,27 +327,15 @@ export default function SignupPage() {
                     control={form.control}
                     name="countryCode"
                     render={({ field }) => (
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger className="w-[96px] h-11 rounded-lg text-xs md:text-sm" data-testid="select-country-code">
-                            <SelectValue placeholder="Code" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {countryCodes.map((country) => (
-                            <SelectItem
-                              key={country.code}
-                              value={country.code}
-                              data-testid={`option-country-code-${country.country.toLowerCase()}`}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <span className="text-sm">{country.country}</span>
-                                <span className="text-muted-foreground">{country.code}</span>
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FormControl>
+                        <Input
+                          readOnly
+                          className="w-[96px] h-11 rounded-lg text-xs md:text-sm bg-muted/30"
+                          data-testid="input-country-code"
+                          value={field.value || "+91"}
+                          onChange={() => undefined}
+                        />
+                      </FormControl>
                     )}
                   />
                   <FormField

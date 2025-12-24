@@ -5,6 +5,23 @@ import { z } from "zod";
 
 // Interviews & proposals share timezone list
 
+const personalEmailDomains = new Set([
+  "gmail.com",
+  "yahoo.com",
+  "yahoo.in",
+  "outlook.com",
+  "hotmail.com",
+  "icloud.com",
+  "aol.com",
+  "proton.me",
+  "protonmail.com",
+  "zoho.com",
+  "yandex.com",
+  "gmx.com",
+  "live.com",
+  "rediffmail.com",
+]);
+
 // --------------------------------------------------
 // User (Intern) Schema
 // --------------------------------------------------
@@ -27,8 +44,23 @@ export const insertUserSchema = createInsertSchema(users).omit({
 }).extend({
   firstName: z.string().min(2, "First name must be at least 2 characters"),
   lastName: z.string().min(2, "Last name must be at least 2 characters"),
-  email: z.string().email("Please enter a valid email address"),
-  countryCode: z.string().min(1, "Country code is required"),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Please enter a valid email address")
+    .refine(
+      (email) => {
+        const domain = email.split("@").pop();
+        return !!domain && personalEmailDomains.has(domain);
+      },
+      {
+        message: "Please use a personal email address (Gmail, Yahoo, Outlook, etc.)",
+      },
+    ),
+  countryCode: z.literal("+91", {
+    errorMap: () => ({ message: "Only +91 phone numbers are supported" }),
+  }),
   phoneNumber: z.string().min(10, "Phone number must be at least 10 digits").max(15, "Phone number too long"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   agreedToTerms: z.boolean().refine(val => val === true, {
@@ -78,7 +110,20 @@ export const insertEmployerSchema = createInsertSchema(employers).omit({
 }).extend({
   name: z.string().min(2, "Name must be at least 2 characters"),
   companyName: z.string().min(2, "Company name must be at least 2 characters"),
-  companyEmail: z.string().email("Please enter a valid email address"),
+  companyEmail: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Please enter a valid email address")
+    .refine(
+      (email) => {
+        const domain = email.split("@").pop();
+        return !!domain && !personalEmailDomains.has(domain);
+      },
+      {
+        message: "Please use a company/work email address (not Gmail, Yahoo, Outlook, etc.)",
+      },
+    ),
   countryCode: z.string().min(1, "Country code is required"),
   phoneNumber: z.string().min(10, "Phone number must be at least 10 digits").max(15, "Phone number too long"),
   password: z.string().min(8, "Password must be at least 8 characters"),
@@ -112,6 +157,24 @@ export const insertAdminSchema = createInsertSchema(admins).omit({
 
 export type InsertAdmin = z.infer<typeof insertAdminSchema>;
 export type Admin = typeof admins.$inferSelect;
+
+// --------------------------------------------------
+// Google OAuth Tokens (Employer Calendar / Meet)
+// --------------------------------------------------
+export const employerGoogleTokens = pgTable("employer_google_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employerId: varchar("employer_id").notNull().unique(),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  scope: text("scope"),
+  tokenType: text("token_type"),
+  expiryDate: timestamp("expiry_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type EmployerGoogleToken = typeof employerGoogleTokens.$inferSelect;
+export type InsertEmployerGoogleToken = typeof employerGoogleTokens.$inferInsert;
 
 // --------------------------------------------------
 // Projects Schema
@@ -280,8 +343,6 @@ export const timezones = [
   { value: "Africa/Algiers", label: "Africa/Algiers" },
   { value: "Africa/Tunis", label: "Africa/Tunis" },
 ] as const;
-
-// --------------------------------------------------
 // Interviews Schema
 // --------------------------------------------------
 
@@ -297,6 +358,7 @@ export const interviews = pgTable("interviews", {
   selectedSlot: integer("selected_slot"),
   timezone: text("timezone"),
   meetingLink: text("meeting_link"),
+  calendarEventId: text("calendar_event_id"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

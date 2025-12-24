@@ -57,6 +57,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation, Link } from "wouter";
 import { getEmployerAuth } from "@/lib/employerAuth";
@@ -118,6 +119,89 @@ export default function EmployerCartPage() {
   const [proposalMonthlyHours, setProposalMonthlyHours] = useState("160");
   const [proposalMonthlyAmount, setProposalMonthlyAmount] = useState("");
   const [isSendingProposal, setIsSendingProposal] = useState(false);
+
+  function pad2(n: number) {
+    return String(n).padStart(2, "0");
+  }
+
+  function parseDateTimeLocal(value: string) {
+    const [datePart, timePart] = value.split("T");
+    if (!datePart || !timePart) return null;
+    const [y, m, d] = datePart.split("-").map((v) => Number(v));
+    const [hh, mm] = timePart.split(":").map((v) => Number(v));
+
+    if ([y, m, d, hh, mm].some((n) => Number.isNaN(n))) return null;
+    return new Date(y, m - 1, d, hh, mm, 0, 0);
+  }
+
+  function formatDateTimeLocal(date: Date) {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(
+      date.getHours(),
+    )}:${pad2(date.getMinutes())}`;
+  }
+
+  function ceilToMinutes(date: Date, intervalMinutes: number) {
+    const ms = date.getTime();
+    const intervalMs = intervalMinutes * 60 * 1000;
+    const rounded = Math.ceil(ms / intervalMs) * intervalMs;
+    return new Date(rounded);
+  }
+
+  function clampDate(date: Date, min: Date, max: Date) {
+    const t = date.getTime();
+    if (t < min.getTime()) return new Date(min.getTime());
+    if (t > max.getTime()) return new Date(max.getTime());
+    return date;
+  }
+
+  const meetingWindowMin = ceilToMinutes(new Date(), 30);
+  const meetingWindowMax = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    return d;
+  })();
+
+  const meetingInputMin = formatDateTimeLocal(meetingWindowMin);
+  const meetingInputMax = formatDateTimeLocal(meetingWindowMax);
+
+  const normalizeMeetingSlotValue = (rawValue: string) => {
+    const parsed = parseDateTimeLocal(rawValue);
+    if (!parsed) return rawValue;
+
+    const snapped = ceilToMinutes(parsed, 30);
+    const clamped = clampDate(snapped, meetingWindowMin, meetingWindowMax);
+    return formatDateTimeLocal(clamped);
+  };
+
+  const getMeetingSlotParts = (value: string) => {
+    const [datePart, timePart] = value.split("T");
+    return {
+      date: datePart || "",
+      time: timePart || "",
+    };
+  };
+
+  const combineMeetingSlotParts = (datePart: string, timePart: string) => {
+    if (!datePart || !timePart) return "";
+    return normalizeMeetingSlotValue(`${datePart}T${timePart}`);
+  };
+
+  const meetingTimeOptions = (() => {
+    const options: string[] = [];
+    for (let h = 0; h < 24; h++) {
+      options.push(`${pad2(h)}:00`);
+      options.push(`${pad2(h)}:30`);
+    }
+    return options;
+  })();
+
+  const isTimeDisabledForDate = (datePart: string, timePart: string) => {
+    if (!datePart || !timePart) return true;
+    const dt = parseDateTimeLocal(`${datePart}T${timePart}`);
+    if (!dt) return true;
+    const t = dt.getTime();
+    return t < meetingWindowMin.getTime() || t > meetingWindowMax.getTime();
+  };
 
   // Load cart dynamically from localStorage + /api/interns
   useEffect(() => {
@@ -395,31 +479,33 @@ export default function EmployerCartPage() {
                             {candidate.location}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                           {/* Schedule & Invite actions */}
                           <Button
                             type="button"
                             variant="ghost"
-                            size="icon"
+                            size="sm"
                             onClick={() => {
                               setActiveCandidate(candidate);
                               setIsMeetingDialogOpen(true);
                             }}
-                            className="h-9 w-9 rounded-full bg-emerald-900 text-white hover:bg-emerald-800 shadow-sm"
+                            className="h-9 px-3 rounded-full bg-emerald-900 text-white hover:bg-emerald-800 shadow-sm flex items-center gap-2"
                           >
                             <Calendar className="w-4 h-4" />
+                            <span className="text-xs font-semibold">Book Meeting</span>
                           </Button>
                           <Button
                             type="button"
                             variant="ghost"
-                            size="icon"
+                            size="sm"
                             onClick={() => {
                               setActiveCandidate(candidate);
                               setIsProposalDialogOpen(true);
                             }}
-                            className="h-9 w-9 rounded-full bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm"
+                            className="h-9 px-3 rounded-full bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm flex items-center gap-2"
                           >
                             <Send className="w-4 h-4" />
+                            <span className="text-xs font-semibold">Send Proposal</span>
                           </Button>
                           <Badge className="bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-semibold">
                             Score: {candidate.findternScore}
@@ -432,32 +518,6 @@ export default function EmployerCartPage() {
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
-                        </div>
-                      </div>
-
-                      {/* Contact Info removed to hide email and phone as per requirements */}
-
-                      {/* Skills */}
-                      <div className="mb-3">
-                        <div className="flex flex-wrap gap-1.5">
-                          {candidate.skills.slice(0, 5).map((skill, idx) => (
-                            <Badge
-                              key={idx}
-                              variant="outline"
-                              className={`text-xs px-2 py-0.5 rounded-full ${
-                                candidate.matchedSkills.includes(skill)
-                                  ? "bg-amber-50 border-amber-300 text-amber-700"
-                                  : "bg-slate-50 border-slate-200 text-slate-600"
-                              }`}
-                            >
-                              {skill}
-                            </Badge>
-                          ))}
-                          {candidate.skills.length > 5 && (
-                            <Badge variant="outline" className="text-xs px-2 py-0.5 rounded-full bg-slate-50 border-slate-200 text-slate-500">
-                              +{candidate.skills.length - 5} more
-                            </Badge>
-                          )}
                         </div>
                       </div>
 
@@ -588,28 +648,68 @@ export default function EmployerCartPage() {
                   <span className="text-[10px] text-slate-400">Next 3 days</span>
                 </label>
                 <div className="relative">
-                  <Input
-                    type="datetime-local"
-                    className="h-10 text-sm pr-10"
-                    value={
+                  {(() => {
+                    const slotValue =
                       slot === 1
                         ? meetingSlots.slot1
                         : slot === 2
                         ? meetingSlots.slot2
-                        : meetingSlots.slot3
-                    }
-                    onChange={(e) => {
-                      const value = e.target.value;
+                        : meetingSlots.slot3;
+                    const parts = getMeetingSlotParts(slotValue);
+
+                    const setSlotValue = (next: string) => {
                       setMeetingSlots((prev) =>
                         slot === 1
-                          ? { ...prev, slot1: value }
+                          ? { ...prev, slot1: next }
                           : slot === 2
-                          ? { ...prev, slot2: value }
-                          : { ...prev, slot3: value },
+                          ? { ...prev, slot2: next }
+                          : { ...prev, slot3: next },
                       );
-                    }}
-                  />
-                  <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                    };
+
+                    return (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="relative">
+                          <Input
+                            type="date"
+                            className="h-10 text-sm pr-10"
+                            min={meetingInputMin.split("T")[0]}
+                            max={meetingInputMax.split("T")[0]}
+                            value={parts.date}
+                            onChange={(e) => {
+                              const nextDate = e.target.value;
+                              const next = combineMeetingSlotParts(nextDate, parts.time || "00:00");
+                              setSlotValue(next);
+                            }}
+                          />
+                          <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                        </div>
+
+                        <Select
+                          value={parts.time}
+                          onValueChange={(nextTime) => {
+                            const next = combineMeetingSlotParts(parts.date, nextTime);
+                            setSlotValue(next);
+                          }}
+                        >
+                          <SelectTrigger className="h-10 text-sm">
+                            <SelectValue placeholder="Time" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {meetingTimeOptions.map((t) => (
+                              <SelectItem
+                                key={t}
+                                value={t}
+                                disabled={isTimeDisabledForDate(parts.date, t)}
+                              >
+                                {t}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             ))}
@@ -664,13 +764,24 @@ export default function EmployerCartPage() {
 
                   const slots = [meetingSlots.slot1, meetingSlots.slot2, meetingSlots.slot3];
 
+                  const projectsRes = await fetch(`/api/employer/${employerId}/projects`);
+                  if (!projectsRes.ok) {
+                    throw new Error("Failed to load employer projects");
+                  }
+                  const projectsJson = await projectsRes.json();
+                  const projectsList = (projectsJson?.projects ?? []) as any[];
+                  const firstProject = projectsList[0];
+
+                  if (!firstProject?.id) {
+                    throw new Error("No project found");
+                  }
+
                   const res = await fetch(`/api/employer/${employerId}/interviews`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                       internId: activeCandidate.id,
-                      projectId: null,
-                      // TODO: once employer profile supports timezone, send that instead of hardcoding
+                      projectId: firstProject.id,
                       timezone: "Asia/Kolkata",
                       slots,
                     }),
@@ -682,9 +793,28 @@ export default function EmployerCartPage() {
                     throw new Error(message);
                   }
 
+                  const json = await res.json().catch(() => null);
+                  const meet = json?.meet as
+                    | {
+                        created?: boolean;
+                        warning?: string | null;
+                        connectUrl?: string | null;
+                      }
+                    | undefined;
+
                   toast({
                     title: "Slots sent",
-                    description: `Your meeting slots have been shared with ${activeCandidate.name}.`,
+                    description: meet?.warning
+                      ? `${meet.warning}. Your slots were sent, but the Google Meet link will be created when the candidate selects a slot (after you connect Google Calendar).`
+                      : `Your meeting slots have been shared with ${activeCandidate.name}.`,
+                    action: meet?.connectUrl ? (
+                      <ToastAction
+                        altText="Connect Google Calendar"
+                        onClick={() => window.open(meet.connectUrl as string, "_blank")}
+                      >
+                        Connect
+                      </ToastAction>
+                    ) : undefined,
                   });
 
                   setIsMeetingDialogOpen(false);
@@ -1251,4 +1381,3 @@ export default function EmployerCartPage() {
     </div>
   );
 }
-

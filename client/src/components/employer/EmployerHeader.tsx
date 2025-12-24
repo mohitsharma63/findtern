@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   Bell,
   ChevronDown,
+  Calendar,
   HelpCircle,
   Shield,
   Trash2,
@@ -39,7 +40,8 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
 
   const isActive = (key: EmployerHeaderActive) => active === key;
 
-  const primaryClasses = "h-11 rounded-lg flex flex-col items-center justify-center gap-0.5";
+  const primaryClasses =
+    "h-11 rounded-none flex flex-col items-center justify-center gap-0.5 border-b-2 border-x-0 border-t-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none";
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white/90 backdrop-blur-lg">
@@ -60,8 +62,8 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
                 size="icon"
                 className={`${primaryClasses} w-14 ${
                   isActive("dashboard")
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    ? "border-emerald-600 text-emerald-700"
+                    : "border-transparent text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
                 }`}
                 onClick={() => setLocation("/employer/dashboard")}
               >
@@ -79,8 +81,8 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
                 size="icon"
                 className={`${primaryClasses} w-16 ${
                   isActive("proposals")
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    ? "border-emerald-600 text-emerald-700"
+                    : "border-transparent text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
                 }`}
                 onClick={() => setLocation("/employer/proposals")}
               >
@@ -98,8 +100,8 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
                 size="icon"
                 className={`${primaryClasses} w-16 ${
                   isActive("schedule")
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    ? "border-emerald-600 text-emerald-700"
+                    : "border-transparent text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
                 }`}
                 onClick={() => setLocation("/employer/shedule")}
               >
@@ -117,8 +119,8 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
                 size="icon"
                 className={`${primaryClasses} w-14 ${
                   isActive("cart")
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    ? "border-emerald-600 text-emerald-700"
+                    : "border-transparent text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
                 } relative`}
                 onClick={() => setLocation("/employer/cart")}
               >
@@ -136,8 +138,8 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
                 size="icon"
                 className={`${primaryClasses} w-14 ${
                   isActive("alerts")
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : "hover:bg-slate-50"
+                    ? "border-emerald-600 text-emerald-700"
+                    : "border-transparent text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
                 }`}
               >
                 <Bell className="w-4 h-4" />
@@ -165,6 +167,22 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
               >
                 <User className="w-4 h-4 text-emerald-600" />
                 <span>Account</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={() => {
+                  const employerId = auth?.id;
+                  if (!employerId) {
+                    setLocation("/employer/login");
+                    return;
+                  }
+                  window.location.href = `/api/google/oauth/start?employerId=${encodeURIComponent(
+                    employerId,
+                  )}`;
+                }}
+              >
+                <Calendar className="w-4 h-4 text-emerald-600" />
+                <span>Connect Google Calendar</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="flex items-center gap-2 cursor-pointer"

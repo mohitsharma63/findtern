@@ -97,13 +97,13 @@ export default function CompanySetupPage() {
   const form = useForm<CompanySetupForm>({
     resolver: zodResolver(companySetupSchema),
     defaultValues: {
-      companyName: "",
+      companyName: auth?.companyName ?? "",
       websiteUrl: "",
       companyEmail: auth?.companyEmail ?? "",
       companySize: "",
       city: "",
       state: "",
-      primaryContactName: "",
+      primaryContactName: auth?.name ?? "",
       primaryContactRole: "",
       country: "",
       secondaryContactName: "",
@@ -787,4 +787,3 @@ export default function CompanySetupPage() {
     </div>
   );
 }
-

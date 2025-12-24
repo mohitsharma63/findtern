@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { EmployerHeader } from "@/components/employer/EmployerHeader";
 import { getEmployerAuth } from "@/lib/employerAuth";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
@@ -125,13 +126,30 @@ export default function EmployerSchedulePage() {
 
       const json = await res.json().catch(() => null);
       const interview = json?.interview;
+      const meet = json?.meet as
+        | {
+            created?: boolean;
+            warning?: string | null;
+            connectUrl?: string | null;
+          }
+        | undefined;
       if (interview) {
         setInterviews((prev) => [interview, ...prev]);
       }
 
       toast({
         title: "Slots sent",
-        description: `New meeting slots have been shared with ${activeInterview.internName || "the candidate"}.`,
+        description: meet?.warning
+          ? `${meet.warning}. Your slots were sent, but the Google Meet link will be created when the candidate selects a slot (after you connect Google Calendar).`
+          : `New meeting slots have been shared with ${activeInterview.internName || "the candidate"}.`,
+        action: meet?.connectUrl ? (
+          <ToastAction
+            altText="Connect Google Calendar"
+            onClick={() => window.open(meet.connectUrl as string, "_blank")}
+          >
+            Connect
+          </ToastAction>
+        ) : undefined,
       });
 
       setIsRescheduleDialogOpen(false);

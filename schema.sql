@@ -55,6 +55,19 @@ CREATE TABLE IF NOT EXISTS admins (
   created_at timestamp DEFAULT now()
 );
 
+-- Google OAuth Tokens (Employer Calendar / Meet)
+CREATE TABLE IF NOT EXISTS employer_google_tokens (
+  id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  employer_id varchar NOT NULL UNIQUE REFERENCES employers(id) ON DELETE CASCADE,
+  access_token text,
+  refresh_token text,
+  scope text,
+  token_type text,
+  expiry_date timestamp,
+  created_at timestamp DEFAULT now(),
+  updated_at timestamp DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS projects (
   id           varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   employer_id  varchar NOT NULL REFERENCES employers(id) ON DELETE CASCADE,
@@ -161,7 +174,11 @@ CREATE TABLE IF NOT EXISTS interviews (
   selected_slot integer, -- 1,2,3 when candidate picks a slot
   timezone      text,
   meeting_link  text,
+  calendar_event_id text,
   notes         text,
   created_at    timestamp DEFAULT now(),
   updated_at    timestamp DEFAULT now()
 );
+
+ALTER TABLE interviews
+  ADD COLUMN IF NOT EXISTS calendar_event_id text;

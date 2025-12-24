@@ -6,6 +6,7 @@ import {
   type Employer,
   type InsertEmployer,
   type Admin,
+  type EmployerGoogleToken,
   type InternDocuments,
   type InsertInternDocuments,
   type InternOnboarding,
@@ -24,6 +25,7 @@ import {
   projects,
   proposals,
   interviews,
+  employerGoogleTokens,
 } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 
@@ -63,6 +65,13 @@ export interface IStorage {
   // Admins
   getAdminByEmail(email: string): Promise<Admin | undefined>;
 
+  // Google OAuth Tokens (Employer Calendar / Meet)
+  getEmployerGoogleToken(employerId: string): Promise<EmployerGoogleToken | undefined>;
+  upsertEmployerGoogleToken(
+    employerId: string,
+    data: Partial<EmployerGoogleToken>,
+  ): Promise<EmployerGoogleToken>;
+
   // Intern Onboarding
   createInternOnboarding(data: InsertInternOnboarding): Promise<InternOnboarding>;
   getInternOnboardingByUserId(userId: string): Promise<InternOnboarding | undefined>;
@@ -85,6 +94,17 @@ export interface IStorage {
   getInterviewsByInternId(internId: string): Promise<Interview[]>;
   getInterviewsByEmployerId(employerId: string): Promise<Interview[]>;
   updateInterviewSelectedSlot(id: string, selectedSlot: number): Promise<Interview | undefined>;
+  updateInterviewScheduleWithMeetingLink(
+    id: string,
+    selectedSlot: number,
+    meetingLink: string | null,
+    calendarEventId?: string | null,
+  ): Promise<Interview | undefined>;
+  updateInterviewMeetingLink(
+    id: string,
+    meetingLink: string,
+    notes?: string | null,
+  ): Promise<Interview | undefined>;
   resetInterviewToPending(id: string): Promise<Interview | undefined>;
   getInterview(id: string): Promise<Interview | undefined>;
   updateInterviewStatus(id: string, status: string): Promise<Interview | undefined>;
@@ -220,6 +240,47 @@ export class PostgresStorage implements IStorage {
     return admin;
   }
 
+  // Google OAuth Tokens (Employer Calendar / Meet)
+  async getEmployerGoogleToken(
+    employerId: string,
+  ): Promise<EmployerGoogleToken | undefined> {
+    const [row] = await db
+      .select()
+      .from(employerGoogleTokens)
+      .where(eq(employerGoogleTokens.employerId, employerId));
+    return row;
+  }
+
+  async upsertEmployerGoogleToken(
+    employerId: string,
+    data: Partial<EmployerGoogleToken>,
+  ): Promise<EmployerGoogleToken> {
+    const existing = await this.getEmployerGoogleToken(employerId);
+
+    if (existing) {
+      const [updated] = await db
+        .update(employerGoogleTokens)
+        .set({
+          ...data,
+          employerId,
+          updatedAt: new Date(),
+        } as any)
+        .where(eq(employerGoogleTokens.employerId, employerId))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(employerGoogleTokens)
+      .values({
+        ...(data as any),
+        employerId,
+        updatedAt: new Date(),
+      })
+      .returning();
+    return created;
+  }
+
   // Intern Onboarding
   async createInternOnboarding(data: InsertInternOnboarding): Promise<InternOnboarding> {
     // Prepare data for insert: pass native JS values for jsonb fields
@@ -295,6 +356,23 @@ export class PostgresStorage implements IStorage {
     return updated;
   }
 
+  async updateInterviewMeetingLink(
+    id: string,
+    meetingLink: string,
+    notes?: string | null,
+  ): Promise<Interview | undefined> {
+    const [updated] = await db
+      .update(interviews)
+      .set({
+        meetingLink,
+        notes: notes ?? null,
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(interviews.id, id))
+      .returning();
+    return updated;
+  }
+
   // Interviews
   async createInterview(data: InsertInterview): Promise<Interview> {
     const [interview] = await db
@@ -342,6 +420,26 @@ export class PostgresStorage implements IStorage {
       .set({
         selectedSlot,
         status: "scheduled",
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(interviews.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateInterviewScheduleWithMeetingLink(
+    id: string,
+    selectedSlot: number,
+    meetingLink: string | null,
+    calendarEventId?: string | null,
+  ): Promise<Interview | undefined> {
+    const [updated] = await db
+      .update(interviews)
+      .set({
+        selectedSlot,
+        status: "scheduled",
+        meetingLink,
+        calendarEventId: calendarEventId ?? null,
         updatedAt: new Date(),
       } as any)
       .where(eq(interviews.id, id))

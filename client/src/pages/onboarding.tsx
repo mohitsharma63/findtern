@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, type ChangeEvent } from "react";
 import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -16,7 +16,7 @@ import skillsData from "@/data/skills.json";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Check, UploadCloud, PlayCircle, ZoomIn, ZoomOut, RotateCw, X, FileText, Trash2, Plus, Loader2, MapPin, Laptop, Globe } from "lucide-react";
+import { Check, UploadCloud, PlayCircle, ZoomIn, ZoomOut, RotateCw, X, FileText, Trash2, Plus, Loader2, MapPin, Laptop, Globe, Pencil } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
 import Cropper from "react-easy-crop";
@@ -47,7 +47,6 @@ type AboutMeForm = {
   linkedinUrl: string;
   location: string;
   bio: string;
-  pinCode: string;
   state: string;
   city: string;
   aadhaarNumber: string;
@@ -71,6 +70,8 @@ type LocationPreferencesState = {
 export default function OnboardingPage() {
   const [, setLocation] = useLocation();
   const [activeStep, setActiveStep] = useState<number>(0);
+  const isEditMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("edit") === "1";
+  const [draftHydrated, setDraftHydrated] = useState(false);
   const [aboutMe, setAboutMe] = useState<AboutMeForm>({
     firstName: "",
     lastName: "",
@@ -82,7 +83,6 @@ export default function OnboardingPage() {
     linkedinUrl: "",
     location: "",
     bio: "",
-    pinCode: "",
     state: "",
     city: "",
     aadhaarNumber: "",
@@ -111,27 +111,341 @@ export default function OnboardingPage() {
   const [extracurricularData, setExtracurricularData] = useState<any[]>([]);
   const { toast } = useToast();
 
-  // Debug userId on component mount
+  const openOnboardingMediaDb = useCallback((): Promise<IDBDatabase> => {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open("findternOnboarding", 1);
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("media")) {
+          db.createObjectStore("media", { keyPath: "key" });
+        }
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }, []);
+
+  const saveMediaToDb = useCallback(
+    async (
+      key: "profilePhoto" | "introVideo" | "aadhaarImage" | "panImage",
+      file: File
+    ) => {
+      const db = await openOnboardingMediaDb();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("media", "readwrite");
+        const store = tx.objectStore("media");
+        store.put({
+          key,
+          blob: file,
+          name: file.name,
+          type: file.type,
+          lastModified: file.lastModified,
+        });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+      db.close();
+    },
+    [openOnboardingMediaDb]
+  );
+
+  const removeMediaFromDb = useCallback(
+    async (key: "profilePhoto" | "introVideo" | "aadhaarImage" | "panImage") => {
+      const db = await openOnboardingMediaDb();
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("media", "readwrite");
+        tx.objectStore("media").delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+      db.close();
+    },
+    [openOnboardingMediaDb]
+  );
+
+  const loadMediaFromDb = useCallback(
+    async (key: "profilePhoto" | "introVideo" | "aadhaarImage" | "panImage") => {
+      const db = await openOnboardingMediaDb();
+      const record = await new Promise<any | null>((resolve, reject) => {
+        const tx = db.transaction("media", "readonly");
+        const request = tx.objectStore("media").get(key);
+        request.onsuccess = () => resolve(request.result ?? null);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+
+      if (!record?.blob) return null;
+      const blob: Blob = record.blob;
+      return new File([blob], record.name || key, {
+        type: record.type || blob.type || "application/octet-stream",
+        lastModified: record.lastModified || Date.now(),
+      });
+    },
+    [openOnboardingMediaDb]
+  );
+
   useEffect(() => {
-    const userId = localStorage.getItem("userId");
-    console.log("Onboarding page mounted. UserId from localStorage:", userId);
-    if (!userId) {
-      console.warn("No userId found. Attempting to recover from userEmail...");
-      const userEmail = localStorage.getItem("userEmail");
-      if (userEmail) {
-        console.log("Found userEmail in localStorage:", userEmail);
-        // Attempt to recover userId from email
-        apiRequest("GET", `/api/auth/user/by-email/${encodeURIComponent(userEmail)}`)
-          .then(res => res.json())
-          .then(data => {
-            if (data.user?.id) {
-              console.log("Recovered userId from email:", data.user.id);
-              localStorage.setItem("userId", data.user.id);
-            }
-          })
-          .catch(err => console.error("Failed to recover userId:", err));
-      }
+    const raw = localStorage.getItem("onboardingDraft");
+    if (!raw) {
+      setDraftHydrated(true);
+      return;
     }
+    try {
+      const parsed = JSON.parse(raw) as {
+        aboutMe?: Partial<AboutMeForm>;
+        academicsData?: any;
+        experienceData?: any[];
+        skills?: SkillEntry[];
+        locationPrefs?: LocationPreferencesState;
+        languagesData?: any[];
+        extracurricularData?: any[];
+        academicsComplete?: boolean;
+        experienceComplete?: boolean;
+        skillsStepComplete?: boolean;
+        languagesComplete?: boolean;
+        locationPrefsComplete?: boolean;
+      };
+
+      if (parsed.aboutMe) {
+        setAboutMe((prev) => ({
+          ...prev,
+          ...parsed.aboutMe,
+          profilePhoto: prev.profilePhoto ?? null,
+          introVideo: prev.introVideo ?? null,
+          aadhaarImage: prev.aadhaarImage ?? null,
+          panImage: prev.panImage ?? null,
+        }));
+      }
+      if (parsed.academicsData !== undefined) setAcademicsData(parsed.academicsData);
+      if (parsed.experienceData) setExperienceData(parsed.experienceData);
+      if (parsed.skills) setSkills(parsed.skills);
+      if (parsed.locationPrefs) setLocationPrefs(parsed.locationPrefs);
+      if (parsed.languagesData) setLanguagesData(parsed.languagesData);
+      if (parsed.extracurricularData) setExtracurricularData(parsed.extracurricularData);
+
+      if (typeof parsed.academicsComplete === "boolean") setAcademicsComplete(parsed.academicsComplete);
+      if (typeof parsed.experienceComplete === "boolean") setExperienceComplete(parsed.experienceComplete);
+      if (typeof parsed.skillsStepComplete === "boolean") setSkillsStepComplete(parsed.skillsStepComplete);
+      if (typeof parsed.languagesComplete === "boolean") setLanguagesComplete(parsed.languagesComplete);
+      if (typeof parsed.locationPrefsComplete === "boolean") setLocationPrefsComplete(parsed.locationPrefsComplete);
+    } catch {
+      localStorage.removeItem("onboardingDraft");
+    } finally {
+      setDraftHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const [profilePhoto, introVideo, aadhaarImage, panImage] = await Promise.all([
+          loadMediaFromDb("profilePhoto"),
+          loadMediaFromDb("introVideo"),
+          loadMediaFromDb("aadhaarImage"),
+          loadMediaFromDb("panImage"),
+        ]);
+
+        if (!isMounted) return;
+
+        setAboutMe((prev) => ({
+          ...prev,
+          profilePhoto: prev.profilePhoto ?? profilePhoto,
+          introVideo: prev.introVideo ?? introVideo,
+          aadhaarImage: prev.aadhaarImage ?? aadhaarImage,
+          panImage: prev.panImage ?? panImage,
+        }));
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loadMediaFromDb]);
+
+  useEffect(() => {
+    if (!draftHydrated) return;
+    const { profilePhoto, introVideo, aadhaarImage, panImage, ...aboutMeDraft } = aboutMe;
+    const draft = {
+      aboutMe: aboutMeDraft,
+      academicsData,
+      experienceData,
+      skills,
+      locationPrefs,
+      languagesData,
+      extracurricularData,
+      academicsComplete,
+      experienceComplete,
+      skillsStepComplete,
+      languagesComplete,
+      locationPrefsComplete,
+    };
+    localStorage.setItem("onboardingDraft", JSON.stringify(draft));
+  }, [
+    draftHydrated,
+    aboutMe,
+    academicsData,
+    experienceData,
+    skills,
+    locationPrefs,
+    languagesData,
+    extracurricularData,
+    academicsComplete,
+    experienceComplete,
+    skillsStepComplete,
+    languagesComplete,
+    locationPrefsComplete,
+  ]);
+
+  useEffect(() => {
+    const raw = localStorage.getItem("onboardingActiveStep");
+    if (!raw) return;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return;
+    const next = Math.max(0, Math.min(steps.length - 1, Math.floor(parsed)));
+    setActiveStep(next);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("onboardingActiveStep", String(activeStep));
+  }, [activeStep]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateFromUser = (user: any) => {
+      if (!user) return;
+
+      setAboutMe((prev) => ({
+        ...prev,
+        firstName: prev.firstName || user.firstName || "",
+        lastName: prev.lastName || user.lastName || "",
+        email: prev.email || user.email || "",
+        phoneCountryCode: prev.phoneCountryCode || user.countryCode || "+91",
+        phone: prev.phone || user.phoneNumber || "",
+      }));
+    };
+
+    const hydrateFromOnboarding = (onboarding: any) => {
+      if (!onboarding) return;
+
+      setAboutMe((prev) => ({
+        ...prev,
+        linkedinUrl: prev.linkedinUrl || onboarding.linkedinUrl || "",
+        bio: prev.bio || onboarding.bio || onboarding.previewSummary || "",
+        state: prev.state || onboarding.state || "",
+        city: prev.city || onboarding.city || "",
+        aadhaarNumber: prev.aadhaarNumber || onboarding.aadhaarNumber || "",
+        panNumber: prev.panNumber || onboarding.panNumber || "",
+      }));
+
+      setAcademicsData((prev) => (prev ?? onboarding?.extraData?.academics ?? null));
+
+      setExperienceData((prev) => {
+        if (Array.isArray(prev) && prev.length > 0) return prev;
+        return Array.isArray(onboarding.experienceJson) ? onboarding.experienceJson : [];
+      });
+
+      setSkills((prev) => {
+        if (Array.isArray(prev) && prev.length > 0) return prev;
+        return Array.isArray(onboarding.skills) ? onboarding.skills : [];
+      });
+
+      setLanguagesData((prev) => {
+        if (Array.isArray(prev) && prev.length > 0) return prev;
+        const langs = onboarding?.extraData?.languages;
+        return Array.isArray(langs) ? langs : [];
+      });
+
+      setExtracurricularData((prev) => {
+        if (Array.isArray(prev) && prev.length > 0) return prev;
+        const extra = onboarding?.extraData?.extracurricular;
+        return Array.isArray(extra) ? extra : [];
+      });
+
+      setLocationPrefs((prev) => {
+        const hasExisting =
+          (Array.isArray(prev.locationTypes) && prev.locationTypes.length > 0) ||
+          (Array.isArray(prev.preferredLocations) && prev.preferredLocations.length > 0) ||
+          !!prev.hasLaptop;
+        if (hasExisting) return prev;
+
+        return {
+          locationTypes: Array.isArray(onboarding.locationTypes) ? onboarding.locationTypes : [],
+          preferredLocations: Array.isArray(onboarding.preferredLocations) ? onboarding.preferredLocations : [],
+          hasLaptop: typeof onboarding.hasLaptop === "boolean" ? (onboarding.hasLaptop ? "yes" : "no") : "",
+        };
+      });
+
+      if (onboarding?.extraData?.academics) setAcademicsComplete(true);
+      if (Array.isArray(onboarding?.skills) && onboarding.skills.length > 0) setSkillsStepComplete(true);
+      if (Array.isArray(onboarding?.extraData?.languages) && onboarding.extraData.languages.length > 0) setLanguagesComplete(true);
+
+      const locTypes = Array.isArray(onboarding?.locationTypes) ? onboarding.locationTypes : [];
+      const prefLocs = Array.isArray(onboarding?.preferredLocations) ? onboarding.preferredLocations : [];
+      const hasLaptopStr = typeof onboarding?.hasLaptop === "boolean" ? (onboarding.hasLaptop ? "yes" : "no") : "";
+      if (locTypes.length > 0 || prefLocs.length > 0 || hasLaptopStr) setLocationPrefsComplete(true);
+    };
+
+    (async () => {
+      try {
+        const userId = localStorage.getItem("userId");
+        const userEmail = localStorage.getItem("userEmail");
+
+        if (userId) {
+          try {
+            const res = await apiRequest("GET", `/api/onboarding/${encodeURIComponent(userId)}`);
+            const data = await res.json();
+            if (cancelled) return;
+            hydrateFromUser(data?.user);
+            if (isEditMode) hydrateFromOnboarding(data?.onboarding);
+            return;
+          } catch (err) {
+            console.log("Unable to hydrate user from /api/onboarding/:userId, falling back to email.", err);
+          }
+        }
+
+        if (userEmail) {
+          const res = await apiRequest(
+            "GET",
+            `/api/auth/user/by-email/${encodeURIComponent(userEmail)}`,
+          );
+          const data = await res.json();
+          if (cancelled) return;
+          hydrateFromUser(data?.user);
+        }
+      } catch (err) {
+        console.log("Unable to hydrate user details for onboarding.", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const signupFirstName = localStorage.getItem("signupFirstName") || "";
+    const signupLastName = localStorage.getItem("signupLastName") || "";
+    const signupCountryCode = localStorage.getItem("signupCountryCode") || "+91";
+    const signupPhoneNumber = localStorage.getItem("signupPhoneNumber") || "";
+    const userEmail = localStorage.getItem("userEmail") || "";
+
+    setAboutMe((prev) => ({
+      ...prev,
+      firstName: prev.firstName || signupFirstName,
+      lastName: prev.lastName || signupLastName,
+      phoneCountryCode: prev.phoneCountryCode || signupCountryCode,
+      phone: prev.phone || signupPhoneNumber,
+      email: prev.email || userEmail,
+    }));
   }, []);
 
   const handleAboutMeChange = (field: keyof AboutMeForm, value: string | File | null) => {
@@ -140,39 +454,22 @@ export default function OnboardingPage() {
       [field]: value,
     }));
 
-    // Auto-resolve PIN to state & city using India Post API
-    if (field === "pinCode" && typeof value === "string") {
-      const pin = value.replace(/\D/g, "");
-      if (pin.length === 6) {
-        fetch(`https://api.postalpincode.in/pincode/${pin}`)
-          .then((res) => res.json())
-          .then((data) => {
-            const info = data?.[0]?.PostOffice?.[0];
-            if (info) {
-              setAboutMe((prev) => ({
-                ...prev,
-                state: info.State || prev.state,
-                city: info.District || prev.city,
-              }));
-              // Clear state/city validation errors once auto-filled
-              setAboutMeErrors((prev) => {
-                const updated = { ...prev };
-                delete (updated as Record<string, string>)["state"];
-                delete (updated as Record<string, string>)["city"];
-                return updated;
-              });
-            }
-          })
-          .catch(() => {
-            // silently ignore API errors, user will see validation if state/city stay empty
-          });
+    if (
+      field === "profilePhoto" ||
+      field === "introVideo" ||
+      field === "aadhaarImage" ||
+      field === "panImage"
+    ) {
+      const key = field;
+      const fileValue = value instanceof File ? value : null;
+      if (fileValue) {
+        saveMediaToDb(key, fileValue).catch(() => {
+          // ignore
+        });
       } else {
-        // reset auto-filled fields if PIN becomes invalid
-        setAboutMe((prev) => ({
-          ...prev,
-          state: "",
-          city: "",
-        }));
+        removeMediaFromDb(key).catch(() => {
+          // ignore
+        });
       }
     }
 
@@ -236,12 +533,6 @@ export default function OnboardingPage() {
       if (!urlPattern.test(aboutMe.linkedinUrl.trim())) {
         errors.linkedinUrl = "Enter a valid LinkedIn profile URL";
       }
-    }
-
-    if (!aboutMe.pinCode.trim()) {
-      errors.pinCode = "PIN code is required";
-    } else if (!/^\d{4,8}$/.test(aboutMe.pinCode.trim())) {
-      errors.pinCode = "Enter a valid PIN / ZIP code";
     }
 
     if (!aboutMe.state.trim()) {
@@ -408,12 +699,14 @@ export default function OnboardingPage() {
           )}
           {activeStep === 1 && (
             <StepAcademics
+              initialData={academicsData}
               onValidityChange={setAcademicsComplete}
               onDataChange={setAcademicsData}
             />
           )}
           {activeStep === 2 && (
             <StepExperience
+              initialData={experienceData}
               onValidityChange={setExperienceComplete}
               onDataChange={setExperienceData}
             />
@@ -429,12 +722,13 @@ export default function OnboardingPage() {
           )}
           {activeStep === 4 && (
             <StepLanguages
+              initialData={languagesData}
               onValidityChange={setLanguagesComplete}
               onDataChange={setLanguagesData}
             />
           )}
           {activeStep === 5 && (
-            <StepExtraCurricular onDataChange={setExtracurricularData} />
+            <StepExtraCurricular initialData={extracurricularData} onDataChange={setExtracurricularData} />
           )}
           {activeStep === 6 && (
             <StepLocationPreferences
@@ -503,6 +797,7 @@ export default function OnboardingPage() {
                   languagesData={languagesData}
                   extracurricularData={extracurricularData}
                   locationPrefs={locationPrefs}
+                  isEditMode={isEditMode}
                   onSuccess={() => setLocation("/dashboard")}
                 />
               )}
@@ -567,6 +862,7 @@ function StepAboutMe({
   }, []);
 
   const profilePreview = form.profilePhoto ? URL.createObjectURL(form.profilePhoto) : null;
+  const introVideoPreview = form.introVideo ? URL.createObjectURL(form.introVideo) : null;
   const aadhaarPreview = form.aadhaarImage ? URL.createObjectURL(form.aadhaarImage) : null;
   const panPreview = form.panImage ? URL.createObjectURL(form.panImage) : null;
 
@@ -625,99 +921,6 @@ function StepAboutMe({
     });
   };
 
-  const detectFaceInFile = async (file: File): Promise<boolean> => {
-    try {
-      // If models are not loaded yet, don't block the user.
-      // We still enforce strict validation once models are ready.
-      if (!faceModelsLoaded) {
-        return true;
-      }
-
-      const imageUrl = URL.createObjectURL(file);
-
-      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => {
-          URL.revokeObjectURL(imageUrl);
-          resolve(image);
-        };
-        image.onerror = (err) => {
-          URL.revokeObjectURL(imageUrl);
-          reject(err);
-        };
-        image.src = imageUrl;
-      });
-
-      // Run detection with standard settings.
-      let detections = await faceapi.detectAllFaces(
-        img,
-        new faceapi.TinyFaceDetectorOptions({
-          inputSize: 416,
-          scoreThreshold: 0.25,
-        }),
-      );
-
-      // If no faces are found, try a second, more lenient pass to better handle
-      // real-world photos (e.g. compressed / WhatsApp images, slightly smaller faces).
-      if (!Array.isArray(detections) || detections.length === 0) {
-        detections = await faceapi.detectAllFaces(
-          img,
-          new faceapi.TinyFaceDetectorOptions({
-            inputSize: 320,
-            scoreThreshold: 0.1,
-          }),
-        );
-      }
-
-      if (!Array.isArray(detections) || detections.length === 0) {
-        setProfileMediaError("Face not detected. Please upload a clear passport-size photo with your face visible.");
-        return false;
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Face detection failed", error);
-      setProfileMediaError("Could not verify face in the photo. Please try again or use a clearer image.");
-      return false;
-    }
-  };
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setProfileMediaError(null);
-
-      if (!file.type.startsWith("image/")) {
-        setProfileMediaError("Please upload an image file (JPG or PNG).");
-        return;
-      }
-
-      if (file.size > 5 * 1024 * 1024) {
-        setProfileMediaError("File is too large. Max size is 5MB.");
-        return;
-      }
-
-      const hasFace = await detectFaceInFile(file);
-      if (!hasFace) {
-        // Strict mode: block non-human or unclear photos.
-        if (!profileMediaError) {
-          setProfileMediaError("Face not detected. Please upload a clear passport-size photo with your face visible.");
-        }
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        setImageToCrop(reader.result as string);
-        setShowCropDialog(true);
-        setCrop({ x: 0, y: 0 });
-        setZoom(1);
-        setRotation(0);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   const resizeImage = (blob: Blob, width: number, height: number): Promise<Blob> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -737,6 +940,33 @@ function StepAboutMe({
       };
       img.src = url;
     });
+  };
+
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    const maxSizeBytes = 5 * 1024 * 1024; // 5MB
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+
+    if (!allowedTypes.includes(file.type)) {
+      setProfileMediaError("Please upload a JPG or PNG image");
+      return;
+    }
+
+    if (file.size > maxSizeBytes) {
+      setProfileMediaError("Image must be under 5MB");
+      return;
+    }
+
+    setProfileMediaError(null);
+    const imageUrl = URL.createObjectURL(file);
+    setImageToCrop(imageUrl);
+    setShowCropDialog(true);
+
+    // Allow selecting the same file again
+    e.target.value = "";
   };
 
   const handleCropComplete = async () => {
@@ -911,7 +1141,16 @@ function StepAboutMe({
           <label className="text-xs md:text-sm font-medium text-foreground">Intro video (optional)</label>
           <label className="group flex cursor-pointer items-center gap-4 rounded-2xl border border-dashed border-border/80 px-4 py-3 md:px-5 md:py-4 bg-card/70 hover:bg-primary/5 transition-colors">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
-              <PlayCircle className="h-7 w-7 text-muted-foreground group-hover:text-primary" />
+              {introVideoPreview ? (
+                <video
+                  src={introVideoPreview}
+                  className="h-full w-full rounded-2xl object-cover"
+                  muted
+                  playsInline
+                />
+              ) : (
+                <PlayCircle className="h-7 w-7 text-muted-foreground group-hover:text-primary" />
+              )}
             </div>
             <div className="flex flex-1 flex-col">
               <span className="text-xs md:text-sm font-medium text-foreground">
@@ -984,7 +1223,7 @@ function StepAboutMe({
                   <SelectValue placeholder="Code" />
                 </SelectTrigger>
                 <SelectContent>
-                  {countryCodes.map((country) => (
+                  {countryCodes.filter((country) => country.code === "+91").map((country) => (
                     <SelectItem key={country.code} value={country.code}>
                       <span className="flex items-center gap-1.5">
                         <span className="text-xs md:text-sm">{country.country}</span>
@@ -1084,8 +1323,8 @@ function StepAboutMe({
         )}
       </div>
 
-      {/* City, State, PIN - searchable City drives auto-fill from JSON */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* City, State */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <label className="text-xs md:text-sm font-medium text-foreground">
             City<span className="text-destructive ml-0.5">*</span>
@@ -1125,10 +1364,9 @@ function StepAboutMe({
                               string,
                               { state: string; pincodes: string[] }
                             >)[selectedKey];
-                            if (entry) {
+                            if (entry?.state) {
                               onChange("city", selectedKey);
                               onChange("state", entry.state);
-                              onChange("pinCode", entry.pincodes[0] || "");
                             } else {
                               onChange("city", selectedKey);
                             }
@@ -1160,55 +1398,6 @@ function StepAboutMe({
             disabled
           />
           {errors.state && <p className="text-[11px] text-destructive mt-0.5">{errors.state}</p>}
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-xs md:text-sm font-medium text-foreground">
-            PIN Code<span className="text-destructive ml-0.5">*</span>
-          </label>
-          {(() => {
-            const cityMap = cityStatePincode as Record<string, { state: string; pincodes: string[] }>;
-            const currentCity = form.city && cityMap[form.city] ? cityMap[form.city] : null;
-            const pincodes = currentCity?.pincodes ?? [];
-
-            if (pincodes.length >= 1) {
-              return (
-                <Select
-                  value={form.pinCode}
-                  onValueChange={(val) => onChange("pinCode", val)}
-                >
-                  <SelectTrigger
-                    className={`h-10 md:h-11 rounded-lg text-sm ${
-                      errors.pinCode ? "border-destructive/70" : ""
-                    }`}
-                  >
-                    <SelectValue placeholder="Select PIN code" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pincodes.map((pin) => (
-                      <SelectItem key={pin} value={pin}>
-                        {pin}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              );
-            }
-
-            return (
-              <Input
-                placeholder="Auto-filled from city"
-                className={`h-10 md:h-11 rounded-lg text-sm ${
-                  errors.pinCode ? "border-destructive/70" : ""
-                }`}
-                value={form.pinCode}
-                onChange={(e) => onChange("pinCode", e.target.value)}
-              />
-            );
-          })()}
-          {errors.pinCode && (
-            <p className="text-[11px] text-destructive mt-0.5">{errors.pinCode}</p>
-          )}
         </div>
       </div>
 
@@ -1382,12 +1571,15 @@ function StepAboutMe({
 }
 
 function StepAcademics({
+  initialData,
   onValidityChange,
   onDataChange,
 }: {
+  initialData?: any;
   onValidityChange: (valid: boolean) => void;
   onDataChange?: (data: any) => void;
 }) {
+  const didHydrateFromInitialData = useRef(false);
   const [level, setLevel] = useState<string>("");
   const [degree, setDegree] = useState<string>("");
   const [specialization, setSpecialization] = useState<string>("");
@@ -1398,6 +1590,13 @@ function StepAcademics({
   const [scoreType, setScoreType] = useState<"percentage" | "cgpa">("percentage");
   const [score, setScore] = useState<string>("");
   const [marksheetFiles, setMarksheetFiles] = useState<File[]>([]);
+  const [marksheetUploads, setMarksheetUploads] = useState<
+    {
+      name: string;
+      type: string;
+      size: number;
+    }[]
+  >([]);
   const [professionalCourses, setProfessionalCourses] = useState<
     {
       id: string;
@@ -1406,10 +1605,49 @@ function StepAcademics({
       level: string;
       status: string;
       institution: string;
+      scoreType: "percentage" | "cgpa";
+      score: string;
+      issueDate: string;
+      startDate: string;
+      endDate: string;
+      duration: string;
+      certificateUploads: { name: string; type: string; size: number }[];
       endYear: string;
     }[]
   >([]);
   const [certificationCourses, setCertificationCourses] = useState<string>("");
+  const [certifications, setCertifications] = useState<
+    {
+      id: string;
+      certificateName: string;
+      institution: string;
+      scoreType: "percentage" | "cgpa";
+      score: string;
+      issueDate: string;
+      duration: string;
+      certificateUploads: { name: string; type: string; size: number }[];
+    }[]
+  >([]);
+
+  useEffect(() => {
+    if (!initialData) return;
+    if (didHydrateFromInitialData.current) return;
+    didHydrateFromInitialData.current = true;
+
+    setLevel(initialData.level || "");
+    setDegree(initialData.degree || "");
+    setSpecialization(initialData.specialization || "");
+    setStatus(initialData.status || "Completed");
+    setInstitution(initialData.institution || "");
+    setStartYear(initialData.startYear || "");
+    setEndYear(initialData.endYear || "");
+    setScoreType(initialData.scoreType || "percentage");
+    setScore(initialData.score || "");
+    setProfessionalCourses(Array.isArray(initialData.professionalCourses) ? initialData.professionalCourses : []);
+    setCertificationCourses(initialData.certificationCourses || "");
+    setCertifications(Array.isArray(initialData.certifications) ? initialData.certifications : []);
+    setMarksheetUploads(Array.isArray(initialData.marksheetUploads) ? initialData.marksheetUploads : []);
+  }, [initialData]);
 
   // Degree options based on level
   const degreeOptions: Record<string, string[]> = {
@@ -1428,12 +1666,12 @@ function StepAcademics({
       !!degree &&
       !!institution &&
       startYear.length === 4 &&
-      endYear.length === 4 &&
+      (status === "Pursuing" ? true : endYear.length === 4) &&
       !!score;
 
     onValidityChange(valid);
 
-    if (valid && onDataChange) {
+    if (onDataChange) {
       onDataChange({
         level,
         degree,
@@ -1444,11 +1682,13 @@ function StepAcademics({
         endYear,
         scoreType,
         score,
+        marksheetUploads,
         professionalCourses,
         certificationCourses,
+        certifications,
       });
     }
-  }, [level, degree, specialization, status, institution, startYear, endYear, scoreType, score, professionalCourses, certificationCourses, onValidityChange, onDataChange]);
+  }, [level, degree, specialization, status, institution, startYear, endYear, scoreType, score, marksheetUploads, professionalCourses, certificationCourses, certifications, onValidityChange, onDataChange]);
 
   const addProfessionalCourse = () => {
     setProfessionalCourses((prev) => [
@@ -1460,6 +1700,13 @@ function StepAcademics({
         level: "",
         status: "Completed",
         institution: "",
+        scoreType: "percentage",
+        score: "",
+        issueDate: "",
+        startDate: "",
+        endDate: "",
+        duration: "",
+        certificateUploads: [],
         endYear: "",
       },
     ]);
@@ -1474,6 +1721,13 @@ function StepAcademics({
       level: string;
       status: string;
       institution: string;
+      scoreType: "percentage" | "cgpa";
+      score: string;
+      issueDate: string;
+      startDate: string;
+      endDate: string;
+      duration: string;
+      certificateUploads: { name: string; type: string; size: number }[];
       endYear: string;
     }, "id">,
     value: string,
@@ -1481,6 +1735,43 @@ function StepAcademics({
     setProfessionalCourses((prev) =>
       prev.map((course) => (course.id === id ? { ...course, [field]: value } : course)),
     );
+  };
+
+  const addCertification = () => {
+    setCertifications((prev) => [
+      ...prev,
+      {
+        id: `cert-${Date.now()}-${Math.random()}`,
+        certificateName: "",
+        institution: "",
+        scoreType: "percentage",
+        score: "",
+        issueDate: "",
+        duration: "",
+        certificateUploads: [],
+      },
+    ]);
+  };
+
+  const updateCertification = (
+    id: string,
+    field: keyof Omit<{
+      id: string;
+      certificateName: string;
+      institution: string;
+      scoreType: "percentage" | "cgpa";
+      score: string;
+      issueDate: string;
+      duration: string;
+      certificateUploads: { name: string; type: string; size: number }[];
+    }, "id">,
+    value: string,
+  ) => {
+    setCertifications((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
+  };
+
+  const removeCertification = (id: string) => {
+    setCertifications((prev) => prev.filter((c) => c.id !== id));
   };
 
   const removeProfessionalCourse = (id: string) => {
@@ -1544,185 +1835,7 @@ function StepAcademics({
         />
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="text-xs md:text-sm font-medium text-foreground">
-            Professional Courses (optional)
-          </label>
-          {professionalCourses.length > 0 && (
-            <span className="text-[11px] text-muted-foreground">
-              Add any additional bootcamps, online programmes or specialised trainings.
-            </span>
-          )}
-        </div>
-
-        {professionalCourses.length === 0 && (
-          <div className="rounded-lg border border-dashed border-border/70 bg-card/40 px-4 py-3 flex items-center justify-between">
-            <p className="text-[11px] md:text-xs text-muted-foreground mr-3">
-              If you have done any professional or industry‑oriented courses, you can add them here.
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-8 rounded-full text-[11px] md:text-xs"
-              onClick={addProfessionalCourse}
-            >
-              Add professional course
-            </Button>
-          </div>
-        )}
-
-        {professionalCourses.length > 0 && (
-          <div className="space-y-4">
-            {professionalCourses.map((course, index) => (
-              <div
-                key={course.id}
-                className="rounded-xl border border-border/70 bg-card/60 p-4 md:p-5 space-y-3"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-xs md:text-sm font-medium text-foreground">
-                    Professional Course {index + 1}
-                  </p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => removeProfessionalCourse(course.id)}
-                  >
-                    <X className="h-3.5 w-3.5 mr-1" />
-                    Remove
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] md:text-xs font-medium text-foreground">
-                      Course type
-                    </label>
-                    <Select
-                      value={course.courseType}
-                      onValueChange={(value) => updateProfessionalCourse(course.id, "courseType", value)}
-                    >
-                      <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm">
-                        <SelectValue placeholder="e.g. Bootcamp, Online, Diploma" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="bootcamp">Bootcamp</SelectItem>
-                        <SelectItem value="online">Online course</SelectItem>
-                        <SelectItem value="diploma">Diploma / Long‑term"</SelectItem>
-                        <SelectItem value="workshop">Workshop / Short‑term</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] md:text-xs font-medium text-foreground">
-                      Course name
-                    </label>
-                    <Input
-                      placeholder="e.g. Web app development"
-                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
-                      value={course.title}
-                      onChange={(e) => updateProfessionalCourse(course.id, "title", e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] md:text-xs font-medium text-foreground">
-                      Level / Stage
-                    </label>
-                    <Select
-                      value={course.level}
-                      onValueChange={(value) => updateProfessionalCourse(course.id, "level", value)}
-                    >
-                      <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm">
-                        <SelectValue placeholder="Select level" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="local">Local</SelectItem>
-                        <SelectItem value="state">State</SelectItem>
-                        <SelectItem value="national">National</SelectItem>
-                        <SelectItem value="international">International</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] md:text-xs font-medium text-foreground">
-                      Status
-                    </label>
-                    <Select
-                      value={course.status}
-                      onValueChange={(value) => updateProfessionalCourse(course.id, "status", value)}
-                    >
-                      <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm">
-                        <SelectValue placeholder="Completed / Ongoing" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Completed">Completed</SelectItem>
-                        <SelectItem value="Ongoing">Ongoing</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] md:text-xs font-medium text-foreground">
-                      End Year
-                    </label>
-                    <Input
-                      placeholder="YYYY"
-                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
-                      value={course.endYear}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/\D/g, "").slice(0, 4);
-                        updateProfessionalCourse(course.id, "endYear", value);
-                      }}
-                      maxLength={4}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[11px] md:text-xs font-medium text-foreground">
-                    Institution / Body
-                  </label>
-                  <Input
-                    placeholder="e.g. Apna College, IIT Bombay, Coursera, etc."
-                    className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
-                    value={course.institution}
-                    onChange={(e) => updateProfessionalCourse(course.id, "institution", e.target.value)}
-                  />
-                </div>
-              </div>
-            ))}
-
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-1 text-[11px] md:text-xs rounded-full"
-              onClick={addProfessionalCourse}
-            >
-              Add another professional course
-            </Button>
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-xs md:text-sm font-medium text-foreground">
-          Certification Courses (optional)
-        </label>
-        <Textarea
-          placeholder="List any certification courses (e.g. Coursera, NPTEL, AWS, etc.)"
-          className="min-h-[70px] md:min-h-[90px] rounded-lg text-sm"
-          value={certificationCourses}
-          onChange={(e) => setCertificationCourses(e.target.value)}
-        />
-      </div>
+      
 
       <div className="space-y-1.5">
         <label className="text-xs md:text-sm font-medium text-foreground">
@@ -1770,7 +1883,7 @@ function StepAcademics({
         </div>
         <div className="space-y-1.5">
           <label className="text-xs md:text-sm font-medium text-foreground">
-            End Year<span className="text-destructive ml-0.5">*</span>
+            End Year{status === "Pursuing" ? "" : <span className="text-destructive ml-0.5">*</span>}
           </label>
           <Input
             placeholder="YYYY"
@@ -1835,10 +1948,17 @@ function StepAcademics({
               onChange={(e) => {
                 const files = Array.from(e.target.files || []);
                 setMarksheetFiles((prev) => [...prev, ...files]);
+                setMarksheetUploads((prev) => [
+                  ...prev,
+                  ...files.map((f) => ({ name: f.name, type: f.type, size: f.size })),
+                ]);
                 // Reset input to allow selecting same file again
                 e.target.value = "";
               }}
             />
+            
+ 
+
             <Button
               type="button"
               variant="outline"
@@ -1916,6 +2036,459 @@ function StepAcademics({
           )}
         </div>
       </div>
+           <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-xs md:text-sm font-medium text-foreground">
+            Professional Courses (optional)
+          </label>
+          {professionalCourses.length > 0 && (
+            <span className="text-[11px] text-muted-foreground">
+              Add any additional bootcamps, online programmes or specialised trainings.
+            </span>
+          )}
+        </div>
+
+        {professionalCourses.length === 0 && (
+          <div className="rounded-lg border border-dashed border-border/70 bg-card/40 px-4 py-3 flex items-center justify-between">
+            <p className="text-[11px] md:text-xs text-muted-foreground mr-3">
+              If you have done any professional or industry‑oriented courses, you can add them here.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 rounded-full text-[11px] md:text-xs"
+              onClick={addProfessionalCourse}
+            >
+              Add professional course
+            </Button>
+          </div>
+        )}
+
+        {professionalCourses.length > 0 && (
+          <div className="space-y-4">
+            {professionalCourses.map((course, index) => (
+              <div
+                key={course.id}
+                className="rounded-xl border border-border/70 bg-card/60 p-4 md:p-5 space-y-3"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs md:text-sm font-medium text-foreground">
+                    Professional Course {index + 1}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => removeProfessionalCourse(course.id)}
+                  >
+                    <X className="h-3.5 w-3.5 mr-1" />
+                    Remove
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Course type
+                    </label>
+                    <Select
+                      value={course.courseType}
+                      onValueChange={(value) => updateProfessionalCourse(course.id, "courseType", value)}
+                    >
+                      <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm">
+                        <SelectValue placeholder="e.g. Bootcamp, Online, Diploma" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="bootcamp">Bootcamp</SelectItem>
+                        <SelectItem value="online">Online course</SelectItem>
+                        <SelectItem value="diploma">Diploma / Long‑term"</SelectItem>
+                        <SelectItem value="workshop">Workshop / Short‑term</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Name of certificate / Course name
+                    </label>
+                    <Input
+                      placeholder="e.g. Web app development"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                      value={course.title}
+                      onChange={(e) => updateProfessionalCourse(course.id, "title", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Level / Stage
+                    </label>
+                    <Select
+                      value={course.level}
+                      onValueChange={(value) => updateProfessionalCourse(course.id, "level", value)}
+                    >
+                      <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm">
+                        <SelectValue placeholder="Select level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="local">Local</SelectItem>
+                        <SelectItem value="state">State</SelectItem>
+                        <SelectItem value="national">National</SelectItem>
+                        <SelectItem value="international">International</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Status
+                    </label>
+                    <Select
+                      value={course.status}
+                      onValueChange={(value) => updateProfessionalCourse(course.id, "status", value)}
+                    >
+                      <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm">
+                        <SelectValue placeholder="Completed / Ongoing" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Completed">Completed</SelectItem>
+                        <SelectItem value="Pursuing">Pursuing</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      End date / Expected end date
+                    </label>
+                    <Input
+                      type="date"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                      value={course.endDate || ""}
+                      onChange={(e) => {
+                        updateProfessionalCourse(course.id, "endDate", e.target.value);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Issue date
+                    </label>
+                    <Input
+                      type="date"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                      value={course.issueDate || ""}
+                      onChange={(e) => updateProfessionalCourse(course.id, "issueDate", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Course duration
+                    </label>
+                    <Input
+                      placeholder="e.g. 3 months"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                      value={course.duration || ""}
+                      onChange={(e) => updateProfessionalCourse(course.id, "duration", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Grades
+                    </label>
+                    <div className="flex gap-2">
+                      <Select
+                        value={course.scoreType}
+                        onValueChange={(value) => updateProfessionalCourse(course.id, "scoreType", value)}
+                      >
+                        <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm w-[130px]">
+                          <SelectValue placeholder="Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="percentage">Percentage</SelectItem>
+                          <SelectItem value="cgpa">CGPA</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder={course.scoreType === "cgpa" ? "CGPA" : "%"}
+                        className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                        value={course.score || ""}
+                        onChange={(e) => updateProfessionalCourse(course.id, "score", e.target.value)}
+                        type="number"
+                        step={course.scoreType === "cgpa" ? "0.01" : "0.1"}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] md:text-xs font-medium text-foreground">
+                    Upload certificate
+                  </label>
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        setProfessionalCourses((prev) =>
+                          prev.map((p) =>
+                            p.id === course.id
+                              ? {
+                                  ...p,
+                                  certificateUploads: [
+                                    ...(p.certificateUploads || []),
+                                    ...files.map((f) => ({ name: f.name, type: f.type, size: f.size })),
+                                  ],
+                                }
+                              : p,
+                          ),
+                        );
+                        e.target.value = "";
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm border-2"
+                      style={{ borderColor: "#0E6049" }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        (e.currentTarget.parentElement?.querySelector("input[type=file]") as HTMLInputElement | null)?.click();
+                      }}
+                    >
+                      <UploadCloud className="h-4 w-4 mr-2" />
+                      Choose Files
+                    </Button>
+                  </label>
+                  {Array.isArray(course.certificateUploads) && course.certificateUploads.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {course.certificateUploads.length} file(s) selected
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] md:text-xs font-medium text-foreground">
+                    Institution / Body
+                  </label>
+                  <Input
+                    placeholder="e.g. Apna College, IIT Bombay, Coursera, etc."
+                    className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                    value={course.institution}
+                    onChange={(e) => updateProfessionalCourse(course.id, "institution", e.target.value)}
+                  />
+                </div>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-1 text-[11px] md:text-xs rounded-full"
+              onClick={addProfessionalCourse}
+            >
+              Add another professional course
+            </Button>
+          </div>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs md:text-sm font-medium text-foreground">
+          Certifications (optional)
+        </label>
+        {certifications.length === 0 && (
+          <div className="rounded-lg border border-dashed border-border/70 bg-card/40 px-4 py-3 flex items-center justify-between">
+            <p className="text-[11px] md:text-xs text-muted-foreground mr-3">
+              Add certificates you have earned (or are pursuing).
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 rounded-full text-[11px] md:text-xs"
+              onClick={addCertification}
+            >
+              Add certification
+            </Button>
+          </div>
+        )}
+
+        {certifications.length > 0 && (
+          <div className="space-y-4">
+            {certifications.map((cert, index) => (
+              <div
+                key={cert.id}
+                className="rounded-xl border border-border/70 bg-card/60 p-4 md:p-5 space-y-3"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs md:text-sm font-medium text-foreground">
+                    Certification {index + 1}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => removeCertification(cert.id)}
+                  >
+                    <X className="h-3.5 w-3.5 mr-1" />
+                    Remove
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Name of certificate
+                    </label>
+                    <Input
+                      placeholder="e.g. AWS Cloud Practitioner"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                      value={cert.certificateName}
+                      onChange={(e) => updateCertification(cert.id, "certificateName", e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Institution / Body
+                    </label>
+                    <Input
+                      placeholder="e.g. Coursera, Microsoft, IIT Bombay"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                      value={cert.institution}
+                      onChange={(e) => updateCertification(cert.id, "institution", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Issue date
+                    </label>
+                    <Input
+                      type="date"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                      value={cert.issueDate}
+                      onChange={(e) => updateCertification(cert.id, "issueDate", e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Course duration
+                    </label>
+                    <Input
+                      placeholder="e.g. 6 months"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                      value={cert.duration}
+                      onChange={(e) => updateCertification(cert.id, "duration", e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] md:text-xs font-medium text-foreground">
+                      Grades
+                    </label>
+                    <div className="flex gap-2">
+                      <Select
+                        value={cert.scoreType}
+                        onValueChange={(value) => updateCertification(cert.id, "scoreType", value)}
+                      >
+                        <SelectTrigger className="h-9 md:h-10 rounded-lg text-xs md:text-sm w-[130px]">
+                          <SelectValue placeholder="Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="percentage">Percentage</SelectItem>
+                          <SelectItem value="cgpa">CGPA</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        placeholder={cert.scoreType === "cgpa" ? "CGPA" : "%"}
+                        className="h-9 md:h-10 rounded-lg text-xs md:text-sm"
+                        value={cert.score}
+                        onChange={(e) => updateCertification(cert.id, "score", e.target.value)}
+                        type="number"
+                        step={cert.scoreType === "cgpa" ? "0.01" : "0.1"}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] md:text-xs font-medium text-foreground">
+                    Upload certificate
+                  </label>
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        setCertifications((prev) =>
+                          prev.map((c) =>
+                            c.id === cert.id
+                              ? {
+                                  ...c,
+                                  certificateUploads: [
+                                    ...(c.certificateUploads || []),
+                                    ...files.map((f) => ({ name: f.name, type: f.type, size: f.size })),
+                                  ],
+                                }
+                              : c,
+                          ),
+                        );
+                        e.target.value = "";
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 md:h-10 rounded-lg text-xs md:text-sm border-2"
+                      style={{ borderColor: "#0E6049" }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        (e.currentTarget.parentElement?.querySelector("input[type=file]") as HTMLInputElement | null)?.click();
+                      }}
+                    >
+                      <UploadCloud className="h-4 w-4 mr-2" />
+                      Choose Files
+                    </Button>
+                  </label>
+                  {Array.isArray(cert.certificateUploads) && cert.certificateUploads.length > 0 && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {cert.certificateUploads.length} file(s) selected
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-1 text-[11px] md:text-xs rounded-full"
+              onClick={addCertification}
+            >
+              Add another certification
+            </Button>
+          </div>
+        )}
+
+       
+      </div>
     </div>
   );
 }
@@ -1930,9 +2503,11 @@ type ExperienceEntry = {
 };
 
 function StepExperience({
+  initialData,
   onValidityChange,
   onDataChange,
 }: {
+  initialData?: ExperienceEntry[];
   onValidityChange: (valid: boolean) => void;
   onDataChange?: (data: ExperienceEntry[]) => void;
 }) {
@@ -1946,6 +2521,44 @@ function StepExperience({
       description: "",
     },
   ]);
+
+  const experienceHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (experienceHydratedRef.current) return;
+    if (!Array.isArray(initialData) || initialData.length === 0) return;
+
+    experienceHydratedRef.current = true;
+    setExperiences(
+      initialData.map((exp: any) => {
+        const rawPeriod = typeof exp.period === "string" ? exp.period : "";
+        const rawFrom = typeof exp.from === "string" ? exp.from : "";
+        const rawTo = typeof exp.to === "string" ? exp.to : "";
+
+        const normalizedPeriod = rawPeriod.replace(/\s+/g, " ").trim();
+        const [periodFrom, periodTo] = (() => {
+          if (!normalizedPeriod) return ["", ""];
+          const parts = normalizedPeriod.split("-").map((p) => p.trim()).filter(Boolean);
+          if (parts.length === 0) return ["", ""];
+          if (parts.length === 1) return [parts[0], ""];
+          return [parts[0], parts.slice(1).join(" - ")];
+        })();
+
+        const bullets = Array.isArray(exp.bullets) ? exp.bullets.filter((b: any) => typeof b === "string" && b.trim()) : [];
+        const rawDescription = typeof exp.description === "string" ? exp.description : "";
+        const description = rawDescription || (bullets.length > 0 ? bullets.join("\n") : "");
+
+        return {
+          id: exp.id || `exp-${Date.now()}-${Math.random()}`,
+          company: typeof exp.company === "string" ? exp.company : "",
+          role: typeof exp.role === "string" ? exp.role : "",
+          from: rawFrom || periodFrom,
+          to: rawTo || periodTo,
+          description,
+        };
+      })
+    );
+  }, [initialData]);
 
   useEffect(() => {
     const valid = experiences.every((exp) => {
@@ -2095,7 +2708,65 @@ function StepSkills({
   const selectedSkills = skills;
   const [open, setOpen] = useState(false);
   const [customSkill, setCustomSkill] = useState("");
+  const [dismissedSuggestionFor, setDismissedSuggestionFor] = useState<string | null>(null);
   const allSkills = (skillsData as unknown as string[]).sort();
+
+  const suggestion = useMemo(() => {
+    const original = customSkill.trim();
+    if (!original) return null;
+    if (original.length < 3) return null;
+    if (dismissedSuggestionFor === original) return null;
+
+    const normalize = (value: string) =>
+      value
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const normalized = normalize(original);
+    const selectedLower = new Set(selectedSkills.map((s) => s.name.toLowerCase()));
+    if (selectedLower.has(normalized)) return null;
+
+    const levenshtein = (a: string, b: string) => {
+      const m = a.length;
+      const n = b.length;
+      const dp = new Array(n + 1);
+      for (let j = 0; j <= n; j++) dp[j] = j;
+
+      for (let i = 1; i <= m; i++) {
+        let prev = dp[0];
+        dp[0] = i;
+        for (let j = 1; j <= n; j++) {
+          const tmp = dp[j];
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+          prev = tmp;
+        }
+      }
+      return dp[n];
+    };
+
+    const maxDistance = Math.min(4, Math.max(1, Math.floor(normalized.length / 3)));
+    let best: { value: string; distance: number } | null = null;
+
+    for (const skill of allSkills) {
+      const s = normalize(skill);
+      if (selectedLower.has(s)) continue;
+
+      const dist = levenshtein(normalized, s);
+      if (dist > maxDistance) continue;
+
+      if (!best || dist < best.distance) {
+        best = { value: skill, distance: dist };
+        if (dist === 1) break;
+      }
+    }
+
+    if (!best) return null;
+    if (best.value.toLowerCase() === normalized) return null;
+    return { original, corrected: best.value };
+  }, [allSkills, customSkill, dismissedSuggestionFor, selectedSkills]);
 
   const addSkill = (skillName: string) => {
     if (selectedSkills.length >= 7) return;
@@ -2127,6 +2798,7 @@ function StepSkills({
     if (customSkill.trim() && selectedSkills.length < 7) {
       addSkill(customSkill.trim());
       setCustomSkill("");
+      setDismissedSuggestionFor(null);
     }
   };
 
@@ -2219,7 +2891,10 @@ function StepSkills({
             placeholder="Enter custom skill"
             className="h-10 md:h-11 rounded-lg text-sm"
             value={customSkill}
-            onChange={(e) => setCustomSkill(e.target.value)}
+            onChange={(e) => {
+              setCustomSkill(e.target.value);
+              setDismissedSuggestionFor(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -2239,6 +2914,35 @@ function StepSkills({
             Add Skill
           </Button>
         </div>
+
+        {suggestion && (
+          <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+            <div className="text-foreground">
+              These are results for{" "}
+              <button
+                type="button"
+                className="font-semibold text-primary underline underline-offset-2"
+                onClick={() => {
+                  setCustomSkill(suggestion.corrected);
+                }}
+              >
+                {suggestion.corrected}
+              </button>
+            </div>
+            <div className="text-muted-foreground">
+              Search instead for{" "}
+              <button
+                type="button"
+                className="text-primary underline underline-offset-2"
+                onClick={() => {
+                  setDismissedSuggestionFor(suggestion.original);
+                }}
+              >
+                {suggestion.original}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Selected Skills with Ratings */}
@@ -2316,9 +3020,11 @@ type LanguageEntry = {
 };
 
 function StepLanguages({
+  initialData,
   onValidityChange,
   onDataChange,
 }: {
+  initialData?: any[];
   onValidityChange: (valid: boolean) => void;
   onDataChange?: (data: any[]) => void;
 }) {
@@ -2340,6 +3046,25 @@ function StepLanguages({
       speak: "yes",
     },
   ]);
+
+  const languagesHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (languagesHydratedRef.current) return;
+    if (!Array.isArray(initialData) || initialData.length === 0) return;
+
+    languagesHydratedRef.current = true;
+    setLanguages(
+      initialData.map((lang: any) => ({
+        id: lang.id || `lang-${Date.now()}-${Math.random()}`,
+        language: lang.language || "",
+        level: lang.level || "",
+        read: lang.read || "",
+        write: lang.write || "",
+        speak: lang.speak || "",
+      }))
+    );
+  }, [initialData]);
 
   const addLanguage = () => {
     setLanguages([
@@ -2495,8 +3220,10 @@ type ActivityEntry = {
 };
 
 function StepExtraCurricular({
+  initialData,
   onDataChange,
 }: {
+  initialData?: any[];
   onDataChange?: (data: any[]) => void;
 }) {
   const [activities, setActivities] = useState<ActivityEntry[]>([
@@ -2506,6 +3233,22 @@ function StepExtraCurricular({
       level: "",
     },
   ]);
+
+  const activitiesHydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (activitiesHydratedRef.current) return;
+    if (!Array.isArray(initialData) || initialData.length === 0) return;
+
+    activitiesHydratedRef.current = true;
+    setActivities(
+      initialData.map((a: any) => ({
+        id: a.id || `activity-${Date.now()}-${Math.random()}`,
+        activity: a.activity || "",
+        level: a.level || "",
+      }))
+    );
+  }, [initialData]);
 
   const addActivity = () => {
     setActivities([
@@ -2862,6 +3605,7 @@ function FinishOnboardingButton({
   extracurricularData,
   locationPrefs,
   onSuccess,
+  isEditMode,
 }: {
   aboutMe: AboutMeForm;
   academicsData: any;
@@ -2871,6 +3615,7 @@ function FinishOnboardingButton({
   extracurricularData: any[];
   locationPrefs: LocationPreferencesState;
   onSuccess: () => void;
+  isEditMode: boolean;
 }) {
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
@@ -2916,7 +3661,7 @@ function FinishOnboardingButton({
       const onboardingData = {
         userId,
         linkedinUrl: aboutMe.linkedinUrl || null,
-        pinCode: aboutMe.pinCode || null,
+        pinCode: null,
         state: aboutMe.state || null,
         city: aboutMe.city || null,
         aadhaarNumber: aboutMe.aadhaarNumber || null,
@@ -2972,7 +3717,7 @@ function FinishOnboardingButton({
       }
 
       toast({
-        title: "Onboarding completed!",
+        title: isEditMode ? "Profile updated!" : "Onboarding completed!",
         description: "Your profile has been saved successfully.",
       });
 
@@ -3002,7 +3747,7 @@ function FinishOnboardingButton({
           Saving...
         </>
       ) : (
-        "Finish & View Opportunities"
+        isEditMode ? "Save Changes" : "Finish & View Opportunities"
       )}
     </Button>
   );
@@ -3036,6 +3781,14 @@ function StepProfilePreview({
   const contactEmail = aboutMe.email || "Email";
   const contactCity = locationSummary || aboutMe.city || "City";
 
+  const introVideoPreview = aboutMe.introVideo ? URL.createObjectURL(aboutMe.introVideo) : null;
+
+  const headline = aboutMe.bio
+    ? aboutMe.bio.split("\n")[0].slice(0, 120)
+    : "Student · Looking for internships";
+
+  const locationLine = [aboutMe.city, aboutMe.state].filter(Boolean).join(", ") || contactCity;
+
   const educationText = academicsData
     ? `${academicsData.degree || ""}${academicsData.institution ? ` from ${academicsData.institution}` : ""}${academicsData.endYear ? ` (${academicsData.endYear})` : ""}`.trim()
     : "Your latest degree, college, graduation year and key academic details will show here.";
@@ -3055,23 +3808,57 @@ function StepProfilePreview({
 
       <div className="grid grid-cols-1 md:grid-cols-[0.9fr_1.5fr] gap-4 md:gap-6">
         {/* Sidebar summary */}
-        <div className="rounded-2xl bg-foreground text-foreground-foreground/90 text-white px-5 py-6 space-y-4">
-          <div className="flex flex-col items-start gap-3">
-            {aboutMe.profilePhoto ? (
-              <img
-                src={URL.createObjectURL(aboutMe.profilePhoto)}
-                alt="Profile"
-                className="h-16 w-16 rounded-full object-cover border-2 border-white/20"
-              />
-            ) : (
-              <div className="h-16 w-16 rounded-full bg-card/20 flex items-center justify-center">
-                <span className="text-white/60 text-xs">Photo</span>
+        <div className="rounded-2xl bg-card/90 border border-card-border/80 text-foreground px-5 py-6 space-y-4">
+          <div className="space-y-3">
+            <div className="relative -mx-5 -mt-6 mb-2 h-44 rounded-t-2xl">
+              <div className="relative h-full overflow-hidden rounded-t-2xl bg-black">
+                {introVideoPreview ? (
+                  <video
+                    src={introVideoPreview}
+                    className="h-full w-full object-cover"
+                    muted
+                    playsInline
+                    controls
+                  />
+                ) : (
+                  <img
+                    src={findternLogo}
+                    alt="Findtern - Internship Simplified"
+                    className="h-full w-full object-contain"
+                  />
+                )}
+
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-foreground shadow-sm ring-1 ring-black/10"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
               </div>
-            )}
-            <div>
-              <div className="text-base font-semibold">{fullName}</div>
-              <div className="text-xs text-white/70">
-                Student{locationSummary ? ` · ${locationSummary}` : ""}
+
+              <div className="absolute -bottom-12 left-5">
+                {aboutMe.profilePhoto ? (
+                  <img
+                    src={URL.createObjectURL(aboutMe.profilePhoto)}
+                    alt="Profile"
+                    className="h-24 w-24 rounded-full object-cover border-4 border-background bg-background"
+                  />
+                ) : (
+                  <div className="h-24 w-24 rounded-full bg-muted flex items-center justify-center border-4 border-background bg-background">
+                    <span className="text-muted-foreground text-xs">Photo</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-14">
+              <div className="">
+                <div className="text-lg font-semibold leading-tight">{fullName}</div>
+                <div className="text-xs text-muted-foreground line-clamp-2">{headline}</div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <MapPin className="h-3.5 w-3.5" />
+                  <span>{locationLine}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -3081,15 +3868,15 @@ function StepProfilePreview({
               <div className="font-semibold uppercase tracking-[0.18em] text-[11px] mb-1.5">
                 Contact
               </div>
-              <p className="text-white/80">
-                {contactPhone} • {contactEmail} • {contactCity}
+              <p className="text-muted-foreground">
+                {contactPhone} • {contactEmail}
               </p>
             </div>
             <div>
               <div className="font-semibold uppercase tracking-[0.18em] text-[11px] mb-1.5">
                 Skills
               </div>
-              <p className="text-white/80">
+              <p className="text-muted-foreground">
                 {primarySkills.length > 0
                   ? primarySkills.join(" · ")
                   : "A quick list of your key skills and strengths so companies can scan your profile fast."}

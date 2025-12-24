@@ -9,8 +9,36 @@ import {
 import { z } from "zod";
 import { google } from "googleapis";
 import { v4 as uuidv4 } from "uuid";
-import fs from "fs";
-import path from "path";
+import crypto from "crypto";
+
+function formatGoogleApiError(error: unknown) {
+  const e: any = error as any;
+  const status = e?.code ?? e?.response?.status ?? null;
+  const message =
+    e?.errors?.[0]?.message ??
+    e?.response?.data?.error_description ??
+    e?.response?.data?.error?.message ??
+    e?.message ??
+    String(error);
+  const reason = e?.errors?.[0]?.reason ?? e?.response?.data?.error ?? null;
+
+  return {
+    status: typeof status === "number" ? status : null,
+    reason: typeof reason === "string" ? reason : null,
+    message: typeof message === "string" ? message : String(message),
+  };
+}
+
+function getGoogleConnectUrl(employerId: string) {
+  const id = String(employerId ?? "").trim();
+  if (!id) return null;
+  return `/api/google/oauth/start?employerId=${encodeURIComponent(id)}`;
+}
+
+async function isGoogleConnectedForEmployer(employerId: string) {
+  const tokenRow = await storage.getEmployerGoogleToken(employerId);
+  return Boolean(tokenRow?.refreshToken || tokenRow?.accessToken);
+}
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
@@ -22,39 +50,122 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-function getCalendarClient() {
-  const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH;
-  const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+const createMeetSchema = z.object({
+  summary: z.string().min(1),
+  description: z.string().optional(),
+  startTime: z.string().min(1),
+  endTime: z.string().min(1),
+  timezone: z.string().min(1),
+});
 
-  if (!keyPath || !serviceAccountEmail) {
-    throw new Error("Google service account env vars are not configured");
+function getGoogleOAuthClientConfig() {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI;
+
+  if (!clientId || !clientSecret || !redirectUri) {
+    throw new Error(
+      "Google OAuth env vars are not configured (GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URI)",
+    );
   }
 
-  const scopes = ["https://www.googleapis.com/auth/calendar"]; 
+  return { clientId, clientSecret, redirectUri };
+}
 
-  const keyFile = path.resolve(keyPath);
-  const keyContent = JSON.parse(fs.readFileSync(keyFile, "utf8"));
+function getOAuth2Client() {
+  const { clientId, clientSecret, redirectUri } = getGoogleOAuthClientConfig();
+  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+}
 
-  const jwtClient = new google.auth.JWT(
-    serviceAccountEmail,
-    undefined,
-    keyContent.private_key,
-    scopes,
-    undefined,
-  );
+type OAuthStatePayload = {
+  employerId: string;
+  nonce: string;
+};
 
-  const calendar = google.calendar({ version: "v3", auth: jwtClient });
+function signOAuthState(payload: OAuthStatePayload) {
+  const secret = process.env.GOOGLE_OAUTH_STATE_SECRET;
+  if (!secret) {
+    throw new Error("GOOGLE_OAUTH_STATE_SECRET is not configured");
+  }
+
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = crypto
+    .createHmac("sha256", secret)
+    .update(body)
+    .digest("base64url");
+  return `${body}.${sig}`;
+}
+
+function verifyOAuthState(state: string): OAuthStatePayload {
+  const secret = process.env.GOOGLE_OAUTH_STATE_SECRET;
+  if (!secret) {
+    throw new Error("GOOGLE_OAUTH_STATE_SECRET is not configured");
+  }
+
+  const [body, sig] = state.split(".");
+  if (!body || !sig) {
+    throw new Error("Invalid OAuth state");
+  }
+
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(body)
+    .digest("base64url");
+
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    throw new Error("Invalid OAuth state signature");
+  }
+
+  const parsed = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+  if (!parsed?.employerId || !parsed?.nonce) {
+    throw new Error("Invalid OAuth state payload");
+  }
+  return parsed;
+}
+
+async function getEmployerCalendarClient(employerId: string) {
+  const tokenRow = await storage.getEmployerGoogleToken(employerId);
+  if (!tokenRow?.refreshToken && !tokenRow?.accessToken) {
+    throw new Error("Google Calendar is not connected for this employer");
+  }
+
+  const oauth2Client = getOAuth2Client();
+  oauth2Client.setCredentials({
+    access_token: tokenRow.accessToken ?? undefined,
+    refresh_token: tokenRow.refreshToken ?? undefined,
+    scope: tokenRow.scope ?? undefined,
+    token_type: tokenRow.tokenType ?? undefined,
+    expiry_date: tokenRow.expiryDate ? tokenRow.expiryDate.getTime() : undefined,
+  });
+
+  oauth2Client.on("tokens", async (tokens) => {
+    try {
+      await storage.upsertEmployerGoogleToken(employerId, {
+        accessToken: tokens.access_token ?? tokenRow.accessToken ?? null,
+        refreshToken: tokens.refresh_token ?? tokenRow.refreshToken ?? null,
+        scope: tokens.scope ?? tokenRow.scope ?? null,
+        tokenType: tokens.token_type ?? tokenRow.tokenType ?? null,
+        expiryDate: tokens.expiry_date ? new Date(tokens.expiry_date) : tokenRow.expiryDate ?? null,
+      } as any);
+    } catch (e) {
+      console.error("Failed to persist refreshed Google tokens:", e);
+    }
+  });
+
+  const calendar = google.calendar({ version: "v3", auth: oauth2Client });
   return calendar;
 }
 
-async function createGoogleMeetLink(opts: {
+async function createGoogleMeetLinkForEmployer(opts: {
+  employerId: string;
   summary: string;
   description?: string;
   startTime: Date;
   endTime: Date;
   timezone: string;
+  attendees?: { email: string }[];
 }) {
-  const calendar = getCalendarClient();
+  const calendar = await getEmployerCalendarClient(opts.employerId);
   const calendarId = process.env.MEET_CALENDAR_ID || "primary";
 
   const requestId = uuidv4();
@@ -73,6 +184,7 @@ async function createGoogleMeetLink(opts: {
         dateTime: opts.endTime.toISOString(),
         timeZone: opts.timezone,
       },
+      attendees: opts.attendees && opts.attendees.length ? opts.attendees : undefined,
       conferenceData: {
         createRequest: {
           requestId,
@@ -100,6 +212,16 @@ async function createGoogleMeetLink(opts: {
   };
 }
 
+function serializeInterview(i: any) {
+  if (!i) return i;
+  return {
+    ...i,
+    project_id: i.projectId ?? null,
+    meet_link: i.meetingLink ?? null,
+    calendar_event_id: i.calendarEventId ?? null,
+  };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
@@ -107,6 +229,154 @@ export async function registerRoutes(
   // ---------------------------------------------
   // Public Auth Endpoints
   // ---------------------------------------------
+
+  app.get("/api/employer/:employerId/google/status", async (req, res) => {
+    try {
+      const employerId = req.params.employerId;
+      const tokenRow = await storage.getEmployerGoogleToken(employerId);
+
+      return res.json({
+        employerId,
+        connected: Boolean(tokenRow?.refreshToken || tokenRow?.accessToken),
+        hasRefreshToken: Boolean(tokenRow?.refreshToken),
+        hasAccessToken: Boolean(tokenRow?.accessToken),
+        scope: tokenRow?.scope ?? null,
+        expiryDate: tokenRow?.expiryDate ? tokenRow.expiryDate.toISOString() : null,
+      });
+    } catch (error) {
+      console.error("Employer Google status error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while fetching Google connection status" });
+    }
+  });
+
+  app.get("/api/google/oauth/start", async (req, res) => {
+    try {
+      const employerId = String(req.query.employerId ?? "").trim();
+      if (!employerId) {
+        return res.status(400).json({ message: "employerId is required" });
+      }
+
+      const nonce = crypto.randomBytes(16).toString("hex");
+      const state = signOAuthState({ employerId, nonce });
+
+      const oauth2Client = getOAuth2Client();
+      const url = oauth2Client.generateAuthUrl({
+        access_type: "offline",
+        prompt: "consent",
+        include_granted_scopes: true,
+        scope: [
+          "https://www.googleapis.com/auth/calendar.events",
+          "https://www.googleapis.com/auth/calendar",
+        ],
+        state,
+      });
+
+      return res.redirect(url);
+    } catch (error) {
+      console.error("Google OAuth start error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while starting Google OAuth" });
+    }
+  });
+
+  const googleOAuthCallbackHandler = async (req: any, res: any) => {
+    try {
+      const code = String(req.query.code ?? "");
+      const state = String(req.query.state ?? "");
+      if (!code || !state) {
+        return res.status(400).json({ message: "Missing code or state" });
+      }
+
+      const payload = verifyOAuthState(state);
+      const oauth2Client = getOAuth2Client();
+      const { tokens } = await oauth2Client.getToken(code);
+
+      const existing = await storage
+        .getEmployerGoogleToken(payload.employerId)
+        .catch(() => undefined);
+
+      await storage.upsertEmployerGoogleToken(payload.employerId, {
+        accessToken: tokens.access_token ?? null,
+        refreshToken: tokens.refresh_token ?? existing?.refreshToken ?? null,
+        scope: tokens.scope ?? null,
+        tokenType: tokens.token_type ?? null,
+        expiryDate: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+      } as any);
+
+      const redirect = process.env.GOOGLE_OAUTH_SUCCESS_REDIRECT;
+      if (redirect) {
+        return res.redirect(redirect);
+      }
+
+      return res.status(200).json({
+        message: "Google Calendar connected successfully",
+        employerId: payload.employerId,
+      });
+    } catch (error) {
+      console.error("Google OAuth callback error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while completing Google OAuth" });
+    }
+  };
+
+  app.get("/api/google/oauth/callback", googleOAuthCallbackHandler);
+  app.get("/auth/google/callback", googleOAuthCallbackHandler);
+
+  app.post("/api/calendar/meet", async (req, res) => {
+    try {
+      const body = createMeetSchema.parse(req.body);
+
+      const employerId = String((req.query as any)?.employerId ?? "").trim();
+      if (!employerId) {
+        return res.status(400).json({ message: "employerId is required" });
+      }
+
+      const start = new Date(body.startTime);
+      const end = new Date(body.endTime);
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return res
+          .status(400)
+          .json({ message: "Invalid startTime or endTime" });
+      }
+
+      if (end.getTime() <= start.getTime()) {
+        return res
+          .status(400)
+          .json({ message: "endTime must be after startTime" });
+      }
+
+      const result = await createGoogleMeetLinkForEmployer({
+        employerId,
+        summary: body.summary,
+        description: body.description,
+        startTime: start,
+        endTime: end,
+        timezone: body.timezone,
+      });
+
+      return res.status(201).json({
+        meetingLink: result.meetingLink,
+        eventId: result.eventId,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+
+      console.error("Create Google Meet link error:", error);
+      return res.status(500).json({
+        message: "An error occurred while creating Google Meet link",
+      });
+    }
+  });
 
   // User registration endpoint - /signup
   app.post("/api/auth/signup", async (req, res) => {
@@ -401,6 +671,46 @@ export async function registerRoutes(
     }
   });
 
+  // Intern/User: change own password
+  app.post("/api/users/:id/change-password", async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const body = changePasswordSchema.parse(req.body);
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (user.password !== body.currentPassword) {
+        return res.status(400).json({ message: "Current password is incorrect" });
+      }
+
+      const updated = await storage.updateUser(userId, {
+        password: body.newPassword,
+      } as any);
+
+      if (!updated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { password, ...safeUser } = updated as any;
+      return res.json({
+        message: "Password updated successfully",
+        user: safeUser,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+      console.error("User change password error:", error);
+      return res.status(500).json({ message: "An error occurred while changing password" });
+    }
+  });
+
   // Admin: update employer
   app.put("/api/admin/employers/:id", async (req, res) => {
     const updated = await storage.updateEmployer(req.params.id, req.body);
@@ -597,12 +907,88 @@ export async function registerRoutes(
     try {
       const internId = req.params.internId;
       const interviews = await storage.getInterviewsByInternId(internId);
-      return res.json({ interviews });
+      return res.json({ interviews: interviews.map(serializeInterview) });
     } catch (error) {
       console.error("List intern interviews error:", error);
       return res
         .status(500)
         .json({ message: "An error occurred while fetching interviews" });
+    }
+  });
+
+  // Employer: create interview slots for an intern
+  const createInterviewSchema = z.object({
+    internId: z.string().min(1),
+    projectId: z.string().nullable().optional(),
+    timezone: z.string().min(1),
+    slots: z.array(z.string().min(1)).length(3),
+  });
+
+  app.post("/api/employer/:employerId/interviews", async (req, res) => {
+    try {
+      const employerId = req.params.employerId;
+
+      const employer = await storage.getEmployer(employerId);
+      if (!employer) {
+        return res.status(404).json({ message: "Employer not found" });
+      }
+
+      const data = createInterviewSchema.parse(req.body);
+
+      const intern = await storage.getUser(data.internId);
+      if (!intern) {
+        return res.status(404).json({ message: "Intern not found" });
+      }
+
+      const parsedSlots = data.slots.map((s) => new Date(s));
+      if (parsedSlots.some((d) => Number.isNaN(d.getTime()))) {
+        return res.status(400).json({ message: "One or more slots are invalid" });
+      }
+
+      const internName = `${intern.firstName ?? ""} ${intern.lastName ?? ""}`.trim() || "Intern";
+      const employerName = employer.companyName || employer.name || "Employer";
+
+      let meetLinkWarning: string | null = null;
+      let meetConnectUrl: string | null = null;
+      if (!(await isGoogleConnectedForEmployer(employerId))) {
+        meetLinkWarning = "Google Calendar is not connected for this employer";
+        meetConnectUrl = getGoogleConnectUrl(employerId);
+      }
+
+      const interview = await storage.createInterview({
+        employerId,
+        internId: data.internId,
+        projectId: data.projectId ?? null,
+        timezone: data.timezone,
+        status: "pending",
+        slot1: parsedSlots[0],
+        slot2: parsedSlots[1],
+        slot3: parsedSlots[2],
+        selectedSlot: null,
+        meetingLink: meetConnectUrl,
+        notes: null,
+      } as any);
+
+      return res.status(201).json({
+        message: "Interview slots created",
+        interview: serializeInterview(interview),
+        meet: {
+          created: false,
+          warning: meetLinkWarning,
+          connectUrl: meetConnectUrl,
+        },
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Validation failed",
+          errors: error.errors,
+        });
+      }
+      console.error("Create interview slots error:", error);
+      return res
+        .status(500)
+        .json({ message: "An error occurred while creating interview slots" });
     }
   });
 
@@ -633,6 +1019,8 @@ app.get("/api/employer/:employerId/interviews", async (req, res) => {
           ...i,
           internName,
           projectName: project?.projectName ?? null,
+          project_id: i.projectId ?? null,
+          meet_link: i.meetingLink ?? null,
         };
       }),
     );
@@ -656,18 +1044,97 @@ app.get("/api/employer/:employerId/interviews", async (req, res) => {
       const interviewId = req.params.id;
       const body = selectSlotSchema.parse(req.body);
 
-      const updated = await storage.updateInterviewSelectedSlot(
+      const existing = await storage.getInterview(interviewId);
+      if (!existing) {
+        return res.status(404).json({ message: "Interview not found" });
+      }
+
+      const slotKey = `slot${body.slot}` as "slot1" | "slot2" | "slot3";
+      const slotValue = (existing as any)[slotKey];
+      if (!slotValue) {
+        return res.status(400).json({ message: "Selected slot time is not set" });
+      }
+
+      const startTime = new Date(slotValue as any);
+      if (Number.isNaN(startTime.getTime())) {
+        return res.status(400).json({ message: "Selected slot time is invalid" });
+      }
+
+      const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
+      const timezone = existing.timezone || "Asia/Kolkata";
+
+      const employer = await storage.getEmployer(existing.employerId).catch(() => undefined);
+      const intern = await storage.getUser(existing.internId).catch(() => undefined);
+
+      const internName = intern
+        ? `${intern.firstName ?? ""} ${intern.lastName ?? ""}`.trim() || "Intern"
+        : "Intern";
+      const employerName = employer?.companyName || employer?.name || "Employer";
+
+      const attendeeEmails = [
+        employer?.companyEmail,
+        intern?.email,
+      ].filter((e): e is string => Boolean(e && String(e).trim()));
+
+      let meetingLink = existing.meetingLink || null;
+      let calendarEventId: string | null = existing.calendarEventId || null;
+      let meetLinkWarning: string | null = null;
+      let meetConnectUrl: string | null = null;
+      if (!meetingLink) {
+        if (!(await isGoogleConnectedForEmployer(existing.employerId))) {
+          meetLinkWarning = "Google Calendar is not connected for this employer";
+          meetConnectUrl = getGoogleConnectUrl(existing.employerId);
+          meetingLink = null;
+        } else {
+          try {
+            const { meetingLink: createdLink, eventId } = await createGoogleMeetLinkForEmployer({
+              employerId: existing.employerId,
+              summary: `Interview: ${employerName} x ${internName}`,
+              description: `Interview scheduled between ${employerName} and ${internName}.`,
+              startTime,
+              endTime,
+              timezone,
+              attendees: attendeeEmails.map((email) => ({ email })),
+            });
+            meetingLink = createdLink;
+            calendarEventId = eventId ?? null;
+          } catch (meetError) {
+            const info = formatGoogleApiError(meetError);
+            meetLinkWarning = `${info.message}${info.status ? ` (status ${info.status})` : ""}${info.reason ? ` [${info.reason}]` : ""}`;
+            if (info.message.includes("Google Calendar is not connected")) {
+              meetConnectUrl = getGoogleConnectUrl(existing.employerId);
+            } else {
+              console.error("Create meeting link during slot selection error:", meetError);
+            }
+            meetingLink = null;
+            calendarEventId = null;
+          }
+        }
+      }
+
+      const scheduled = await storage.updateInterviewScheduleWithMeetingLink(
         interviewId,
         body.slot,
+        meetingLink,
+        calendarEventId,
       );
 
-      if (!updated) {
+      if (!scheduled) {
         return res.status(404).json({ message: "Interview not found" });
       }
 
       return res.json({
         message: "Slot selected",
-        interview: updated,
+        interview: serializeInterview(scheduled),
+        meet: {
+          created: Boolean(meetingLink),
+          warning:
+            meetingLink
+              ? null
+              : meetLinkWarning ??
+                "Google Meet link could not be created (Google Calendar not connected or permission issue)",
+          connectUrl: meetConnectUrl,
+        },
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -909,16 +1376,63 @@ app.get("/api/employer/:employerId/interviews", async (req, res) => {
   // Get intern onboarding by user ID
   app.get("/api/onboarding/:userId", async (req, res) => {
     try {
-      const onboarding = await storage.getInternOnboardingByUserId(req.params.userId);
+      const [user, onboarding, internDocument] = await Promise.all([
+        storage.getUser(req.params.userId),
+        storage.getInternOnboardingByUserId(req.params.userId),
+        storage.getInternDocumentsByUserId(req.params.userId),
+      ]);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
       if (!onboarding) {
         return res.status(404).json({ message: "Onboarding data not found" });
       }
-      return res.json({ onboarding });
+
+      const safeUser = {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        countryCode: user.countryCode,
+        phoneNumber: user.phoneNumber,
+        role: user.role,
+      };
+
+      return res.json({
+        user: safeUser,
+        onboarding,
+        intern_document: internDocument ?? null,
+      });
     } catch (error) {
       console.error("Onboarding get error:", error);
       return res.status(500).json({
         message: "An error occurred while fetching onboarding data",
       });
+    }
+  });
+
+  // Get intern user by user ID
+  app.get("/api/users/:userId", async (req, res) => {
+    try {
+      const user = await storage.getUser(req.params.userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const safeUser = {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        countryCode: user.countryCode,
+        phoneNumber: user.phoneNumber,
+        role: user.role,
+      };
+
+      return res.json({ user: safeUser });
+    } catch (error) {
+      console.error("User get error:", error);
+      return res.status(500).json({ message: "An error occurred while fetching user data" });
     }
   });
 
