@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { Bell, Calendar as CalendarIcon, FileText, LayoutDashboard, Lock, LogOut, UserMinus } from "lucide-react";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 
 interface CandidateHeaderProps {
   showAiInterviewButton?: boolean;
@@ -53,6 +53,7 @@ export function CandidateHeader({
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-2">
           <img src={findternLogo} alt="Findtern" className="h-8 w-auto" />
+
           <span className="text-lg font-semibold text-[#0E6049]">FINDTERN</span>
           <span className="text-sm text-muted-foreground">INTERNSHIP SIMPLIFIED</span>
         </div>

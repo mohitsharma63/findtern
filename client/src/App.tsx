@@ -1,11 +1,30 @@
-import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import "bootstrap/dist/css/bootstrap.min.css"; // Using your saved path
+import "../App.css";
+
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
+import { Switch, Route, useLocation } from "wouter";
+import { useEffect, useState, type ReactNode } from "react";
+
+import { queryClient } from "./lib/queryClient";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/toaster";
+import { getEmployerAuth, type EmployerAuth } from "@/lib/employerAuth";
+
+import Layout from "./layout/Layout";
+
+// Marketing pages
+import Home from "./pages/findtern-ui/Home";
+import About from "./pages/findtern-ui/About";
+import Pricing from "./pages/findtern-ui/Pricing";
+import Blog from "./pages/findtern-ui/Blog";
+import BlogDetail from "./pages/findtern-ui/BlogDetail";
+import Contact from "./pages/findtern-ui/Contact";
+import Faq from "./pages/findtern-ui/Faq";
+import Terms from "./pages/findtern-ui/Terms";
+
+// Intern pages
 import SignupPage from "@/pages/signup";
 import LoginPage from "@/pages/login";
-import NotFound from "@/pages/not-found";
 import OnboardingLoadingPage from "@/pages/onboarding-loading";
 import OnboardingPage from "@/pages/onboarding";
 import DashboardPage from "@/pages/dashboard";
@@ -13,9 +32,10 @@ import DashboardDocumentsPage from "@/pages/dashboard-documents";
 import InterviewsPage from "@/pages/interviews";
 import ProposalsPage from "@/pages/proposals";
 import ProposalDetailPage from "@/pages/proposal-detail";
-import OpportunitiesPage from "@/pages/opportunities";
 import SettingsPage from "@/pages/settings";
 import EditProfilePage from "@/pages/edit-profile";
+
+// Admin pages
 import AdminLoginPage from "@/pages/admin/admin-login";
 import AdminDashboardPage from "@/pages/admin/admin-dashboard";
 import AdminSkillsPage from "@/pages/admin/admin-skills";
@@ -28,7 +48,8 @@ import AdminUsersPage from "@/pages/admin/admin-users";
 import AdminInternDetailPage from "@/pages/admin/admin-intern-detail";
 import AdminCompanyDetailPage from "@/pages/admin/admin-company-detail";
 import AdminTransactionsPage from "@/pages/admin/admin-transactions";
-// Employer Pages
+
+// Employer pages
 import EmployerSignupPage from "@/pages/employer/employer-signup";
 import EmployerLoginPage from "@/pages/employer/employer-login";
 import EmployerOnboardingPage from "@/pages/employer/employer-onboarding";
@@ -45,25 +66,42 @@ import EmployerInternDetailPage from "@/pages/employer/employer-intern-detail";
 import EmployerProposalsPage from "@/pages/employer/employer-proposals";
 import EmployerProposalDetailPage from "@/pages/employer/employer-proposal-detail";
 import EmployerProposalEditPage from "@/pages/employer/employer-proposal-edit-page";
-import { useLocation } from "wouter";
-import { useEffect, useState, type ReactNode } from "react";
-import { getEmployerAuth, type EmployerAuth } from "@/lib/employerAuth";
+
+import NotFound from "@/pages/not-found";
 
 function AdminIndexRedirect() {
   const [, setLocation] = useLocation();
-  setLocation("/admin/dashboard");
+  useEffect(() => {
+    setLocation("/admin/dashboard");
+  }, [setLocation]);
   return null;
 }
 
 function EmployerIndexRedirect() {
   const [, setLocation] = useLocation();
-  setLocation("/employer/dashboard");
+  useEffect(() => {
+    setLocation("/employer/dashboard");
+  }, [setLocation]);
+  return null;
+}
+
+function InternAliasRedirect({ to }: { to: string }) {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation(to);
+  }, [setLocation, to]);
   return null;
 }
 
 type EmployerStage = "setup" | "onboarding" | "internal";
 
-function EmployerRouteGuard({ requiredStage, children }: { requiredStage: EmployerStage; children: ReactNode }) {
+function EmployerRouteGuard({
+  requiredStage,
+  children,
+}: {
+  requiredStage: EmployerStage;
+  children: ReactNode;
+}) {
   const [, setLocation] = useLocation();
   const [checked, setChecked] = useState(false);
   const [auth, setAuth] = useState<EmployerAuth | null>(null);
@@ -120,10 +158,58 @@ function EmployerRouteGuard({ requiredStage, children }: { requiredStage: Employ
   return <>{children}</>;
 }
 
+function MarketingPage({ children }: { children: ReactNode }) {
+  return <Layout>{children}</Layout>;
+}
+
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={LoginPage} />
+      {/* Marketing */}
+      <Route path="/">
+        <MarketingPage>
+          <Home />
+        </MarketingPage>
+      </Route>
+      <Route path="/about">
+        <MarketingPage>
+          <About />
+        </MarketingPage>
+      </Route>
+      <Route path="/pricing">
+        <MarketingPage>
+          <Pricing />
+        </MarketingPage>
+      </Route>
+      <Route path="/blog">
+        <MarketingPage>
+          <Blog />
+        </MarketingPage>
+      </Route>
+      <Route path="/blog/:slug">
+        {(params) => (
+          <MarketingPage>
+            <BlogDetail params={params} />
+          </MarketingPage>
+        )}
+      </Route>
+      <Route path="/contact">
+        <MarketingPage>
+          <Contact />
+        </MarketingPage>
+      </Route>
+      <Route path="/faq">
+        <MarketingPage>
+          <Faq />
+        </MarketingPage>
+      </Route>
+      <Route path="/terms-and-conditions">
+        <MarketingPage>
+          <Terms />
+        </MarketingPage>
+      </Route>
+
+      {/* Intern (canonical routes) */}
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
       <Route path="/onboarding-loading" component={OnboardingLoadingPage} />
@@ -133,128 +219,125 @@ function Router() {
       <Route path="/interviews" component={InterviewsPage} />
       <Route path="/proposals" component={ProposalsPage} />
       <Route path="/proposals/:id" component={ProposalDetailPage} />
-      {/* <Route path="/opportunities" component={OpportunitiesPage} /> */}
       <Route path="/settings" component={SettingsPage} />
       <Route path="/edit-profile" component={EditProfilePage} />
 
-      {/* Employer routes */}
+      {/* Intern aliases under /intern/* */}
+      <Route path="/intern/login">
+        <InternAliasRedirect to="/login" />
+      </Route>
+      <Route path="/intern/signup">
+        <InternAliasRedirect to="/signup" />
+      </Route>
+      <Route path="/intern/onboarding-loading">
+        <InternAliasRedirect to="/onboarding-loading" />
+      </Route>
+      <Route path="/intern/onboarding">
+        <InternAliasRedirect to="/onboarding" />
+      </Route>
+      <Route path="/intern/dashboard">
+        <InternAliasRedirect to="/dashboard" />
+      </Route>
+      <Route path="/intern/dashboard/documents">
+        <InternAliasRedirect to="/dashboard/documents" />
+      </Route>
+      <Route path="/intern/interviews">
+        <InternAliasRedirect to="/interviews" />
+      </Route>
+      <Route path="/intern/proposals">
+        <InternAliasRedirect to="/proposals" />
+      </Route>
+      <Route path="/intern/proposals/:id">
+        {(params) => <InternAliasRedirect to={`/proposals/${params.id ?? ""}`} />}
+      </Route>
+      <Route path="/intern/settings">
+        <InternAliasRedirect to="/settings" />
+      </Route>
+      <Route path="/intern/edit-profile">
+        <InternAliasRedirect to="/edit-profile" />
+      </Route>
+
+      {/* Employer */}
       <Route path="/employer" component={EmployerIndexRedirect} />
       <Route path="/employer/signup" component={EmployerSignupPage} />
       <Route path="/employer/login" component={EmployerLoginPage} />
-      <Route
-        path="/employer/setup"
-        component={() => (
-          <EmployerRouteGuard requiredStage="setup">
-            <CompanySetupPage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/onboarding"
-        component={() => (
-          <EmployerRouteGuard requiredStage="onboarding">
-            <EmployerOnboardingPage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/dashboard"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <EmployerDashboardPage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/profile"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <CompanyProfilePage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/account"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <CompanyAccountPage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/account/change-password"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <EmployerChangePasswordPage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/account/deactivate"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <EmployerDeactivateAccountPage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/shedule"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <EmployerSchedulePage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/cart"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <EmployerCartPage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/proposals"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <EmployerProposalsPage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/proposals/:id"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <EmployerProposalDetailPage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/proposals/:id/edit"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <EmployerProposalEditPage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/compare"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <EmployerComparePage />
-          </EmployerRouteGuard>
-        )}
-      />
-      <Route
-        path="/employer/intern/:id"
-        component={() => (
-          <EmployerRouteGuard requiredStage="internal">
-            <EmployerInternDetailPage />
-          </EmployerRouteGuard>
-        )}
-      />
 
-      {/* Admin routes */}
+      <Route path="/employer/setup">
+        <EmployerRouteGuard requiredStage="setup">
+          <CompanySetupPage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/onboarding">
+        <EmployerRouteGuard requiredStage="onboarding">
+          <EmployerOnboardingPage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/dashboard">
+        <EmployerRouteGuard requiredStage="internal">
+          <EmployerDashboardPage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/profile">
+        <EmployerRouteGuard requiredStage="internal">
+          <CompanyProfilePage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/account">
+        <EmployerRouteGuard requiredStage="internal">
+          <CompanyAccountPage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/account/change-password">
+        <EmployerRouteGuard requiredStage="internal">
+          <EmployerChangePasswordPage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/account/deactivate">
+        <EmployerRouteGuard requiredStage="internal">
+          <EmployerDeactivateAccountPage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/schedule">
+        <EmployerRouteGuard requiredStage="internal">
+          <EmployerSchedulePage />
+        </EmployerRouteGuard>
+      </Route>
+      {/* Backward-compatible typo route */}
+      <Route path="/employer/shedule">
+        <InternAliasRedirect to="/employer/schedule" />
+      </Route>
+      <Route path="/employer/cart">
+        <EmployerRouteGuard requiredStage="internal">
+          <EmployerCartPage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/proposals">
+        <EmployerRouteGuard requiredStage="internal">
+          <EmployerProposalsPage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/proposals/:id">
+        <EmployerRouteGuard requiredStage="internal">
+          <EmployerProposalDetailPage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/proposals/:id/edit">
+        <EmployerRouteGuard requiredStage="internal">
+          <EmployerProposalEditPage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/compare">
+        <EmployerRouteGuard requiredStage="internal">
+          <EmployerComparePage />
+        </EmployerRouteGuard>
+      </Route>
+      <Route path="/employer/intern/:id">
+        <EmployerRouteGuard requiredStage="internal">
+          <EmployerInternDetailPage />
+        </EmployerRouteGuard>
+      </Route>
+
+      {/* Admin */}
       <Route path="/admin" component={AdminIndexRedirect} />
       <Route path="/admin/login" component={AdminLoginPage} />
       <Route path="/admin/dashboard" component={AdminDashboardPage} />
@@ -274,7 +357,7 @@ function Router() {
   );
 }
 
-function App() {
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -284,5 +367,3 @@ function App() {
     </QueryClientProvider>
   );
 }
-
-export default App;

@@ -346,7 +346,7 @@ export default function OnboardingPage() {
         panNumber: prev.panNumber || onboarding.panNumber || "",
       }));
 
-      setAcademicsData((prev) => (prev ?? onboarding?.extraData?.academics ?? null));
+      setAcademicsData((prev: any) => (prev ?? onboarding?.extraData?.academics ?? null));
 
       setExperienceData((prev) => {
         if (Array.isArray(prev) && prev.length > 0) return prev;
@@ -2538,7 +2538,7 @@ function StepExperience({
         const normalizedPeriod = rawPeriod.replace(/\s+/g, " ").trim();
         const [periodFrom, periodTo] = (() => {
           if (!normalizedPeriod) return ["", ""];
-          const parts = normalizedPeriod.split("-").map((p) => p.trim()).filter(Boolean);
+          const parts = normalizedPeriod.split("-").map((p: string) => p.trim()).filter(Boolean);
           if (parts.length === 0) return ["", ""];
           if (parts.length === 1) return [parts[0], ""];
           return [parts[0], parts.slice(1).join(" - ")];
@@ -3633,12 +3633,14 @@ function FinishOnboardingButton({
         if (userEmail) {
           console.log("Attempting to recover userId from email:", userEmail);
           try {
-            const response = await apiRequest("GET", `/api/auth/user/by-email/${encodeURIComponent(userEmail)}`);
+            const response = await apiRequest("GET", `/api/auth/user/by-email/${encodeURIComponent(userEmail ?? "")}`);
             const data = await response.json();
             if (data.user?.id) {
               userId = data.user.id;
               console.log("Successfully recovered userId:", userId);
-              localStorage.setItem("userId", userId);
+              if (userId) {
+                localStorage.setItem("userId", userId);
+              }
             }
           } catch (err) {
             console.error("Failed to recover userId:", err);

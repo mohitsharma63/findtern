@@ -15,7 +15,7 @@ import {
   LogOut,
   User,
 } from "lucide-react";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 import {
   DropdownMenu,
   DropdownMenuContent,
