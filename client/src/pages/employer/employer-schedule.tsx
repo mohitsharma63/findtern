@@ -19,6 +19,13 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
 export default function EmployerSchedulePage() {
   const [, setLocation] = useLocation();
@@ -30,6 +37,102 @@ export default function EmployerSchedulePage() {
   const [isRescheduleDialogOpen, setIsRescheduleDialogOpen] = useState(false);
   const [rescheduleSlots, setRescheduleSlots] = useState({ slot1: "", slot2: "", slot3: "" });
   const [isSendingSlots, setIsSendingSlots] = useState(false);
+
+  function pad2(n: number) {
+    return String(n).padStart(2, "0");
+  }
+
+  function parseDateTimeLocal(value: string) {
+    const [datePart, timePart] = value.split("T");
+    if (!datePart || !timePart) return null;
+    const [y, m, d] = datePart.split("-").map((v) => Number(v));
+    const [hh, mm] = timePart.split(":").map((v) => Number(v));
+
+    if ([y, m, d, hh, mm].some((n) => Number.isNaN(n))) return null;
+    return new Date(y, m - 1, d, hh, mm, 0, 0);
+  }
+
+  function formatDateTimeLocal(date: Date) {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(
+      date.getHours(),
+    )}:${pad2(date.getMinutes())}`;
+  }
+
+  function ceilToMinutes(date: Date, intervalMinutes: number) {
+    const ms = date.getTime();
+    const intervalMs = intervalMinutes * 60 * 1000;
+    const rounded = Math.ceil(ms / intervalMs) * intervalMs;
+    return new Date(rounded);
+  }
+
+  function addMinutes(date: Date, minutes: number) {
+    return new Date(date.getTime() + minutes * 60 * 1000);
+  }
+
+  function clampDate(date: Date, min: Date, max: Date) {
+    const t = date.getTime();
+    if (t < min.getTime()) return new Date(min.getTime());
+    if (t > max.getTime()) return new Date(max.getTime());
+    return date;
+  }
+
+  const meetingWindowMin = ceilToMinutes(new Date(), 30);
+  const meetingWindowMax = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 3);
+    return d;
+  })();
+
+  const meetingInputMin = formatDateTimeLocal(meetingWindowMin);
+  const meetingInputMax = formatDateTimeLocal(meetingWindowMax);
+
+  const normalizeRescheduleSlotValue = (rawValue: string) => {
+    const parsed = parseDateTimeLocal(rawValue);
+    if (!parsed) return rawValue;
+
+    const snapped = ceilToMinutes(parsed, 30);
+    const clamped = clampDate(snapped, meetingWindowMin, meetingWindowMax);
+    return formatDateTimeLocal(clamped);
+  };
+
+  const buildDefaultRescheduleSlots = () => {
+    const base = meetingWindowMin;
+    return {
+      slot1: normalizeRescheduleSlotValue(formatDateTimeLocal(base)),
+      slot2: normalizeRescheduleSlotValue(formatDateTimeLocal(addMinutes(base, 30))),
+      slot3: normalizeRescheduleSlotValue(formatDateTimeLocal(addMinutes(base, 60))),
+    };
+  };
+
+  const getSlotParts = (value: string) => {
+    const [datePart, timePart] = value.split("T");
+    return {
+      date: datePart || "",
+      time: timePart || "",
+    };
+  };
+
+  const combineSlotParts = (datePart: string, timePart: string) => {
+    if (!datePart || !timePart) return "";
+    return normalizeRescheduleSlotValue(`${datePart}T${timePart}`);
+  };
+
+  const timeOptions = (() => {
+    const options: string[] = [];
+    for (let h = 0; h < 24; h++) {
+      options.push(`${pad2(h)}:00`);
+      options.push(`${pad2(h)}:30`);
+    }
+    return options;
+  })();
+
+  const isTimeDisabledForDate = (datePart: string, timePart: string) => {
+    if (!datePart || !timePart) return true;
+    const dt = parseDateTimeLocal(`${datePart}T${timePart}`);
+    if (!dt) return true;
+    const t = dt.getTime();
+    return t < meetingWindowMin.getTime() || t > meetingWindowMax.getTime();
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -74,7 +177,7 @@ export default function EmployerSchedulePage() {
 
   const openRescheduleDialog = (interview: any) => {
     setActiveInterview(interview);
-    setRescheduleSlots({ slot1: "", slot2: "", slot3: "" });
+    setRescheduleSlots(buildDefaultRescheduleSlots());
     setIsRescheduleDialogOpen(true);
   };
 
@@ -86,6 +189,15 @@ export default function EmployerSchedulePage() {
       toast({
         title: "Add all 3 slots",
         description: "Please select all three meeting slots before sending.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (new Set([slot1, slot2, slot3]).size !== 3) {
+      toast({
+        title: "Choose different time slots",
+        description: "All 3 meeting slots must be different.",
         variant: "destructive",
       });
       return;
@@ -181,17 +293,6 @@ export default function EmployerSchedulePage() {
               Track all upcoming interviews, candidate confirmations and meeting links in one place.
             </p>
           </div>
-
-          <div className="hidden md:flex items-center gap-2 text-[11px] text-slate-500">
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-              Confirmed
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
-              Pending
-            </span>
-          </div>
         </div>
 
         <Card className="rounded-2xl border-slate-100 shadow-sm overflow-hidden">
@@ -199,14 +300,6 @@ export default function EmployerSchedulePage() {
             <p className="text-xs md:text-sm text-slate-600">
               Showing <span className="font-medium text-slate-900">{interviews.length}</span> interviews
             </p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="h-8 text-xs">
-                Export (static)
-              </Button>
-              <Button size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white">
-                New Interview (static)
-              </Button>
-            </div>
           </div>
 
           <div className="px-2 md:px-4 pb-2 md:pb-4 pt-2 bg-white">
@@ -350,6 +443,8 @@ export default function EmployerSchedulePage() {
           if (!open) {
             setActiveInterview(null);
             setRescheduleSlots({ slot1: "", slot2: "", slot3: "" });
+          } else {
+            setRescheduleSlots(buildDefaultRescheduleSlots());
           }
         }}
       >
@@ -373,28 +468,75 @@ export default function EmployerSchedulePage() {
                   <span className="text-[10px] text-slate-400">Next 3 days</span>
                 </label>
                 <div className="relative">
-                  <Input
-                    type="datetime-local"
-                    className="h-10 text-sm pr-10"
-                    value={
+                  {(() => {
+                    const slotValue =
                       slot === 1
                         ? rescheduleSlots.slot1
                         : slot === 2
                         ? rescheduleSlots.slot2
-                        : rescheduleSlots.slot3
-                    }
-                    onChange={(e) => {
-                      const value = e.target.value;
+                        : rescheduleSlots.slot3;
+                    const parts = getSlotParts(slotValue);
+
+                    const otherSlotValues = [rescheduleSlots.slot1, rescheduleSlots.slot2, rescheduleSlots.slot3].filter(
+                      (v) => v && v !== slotValue,
+                    );
+
+                    const setSlotValue = (next: string) => {
                       setRescheduleSlots((prev) =>
                         slot === 1
-                          ? { ...prev, slot1: value }
+                          ? { ...prev, slot1: next }
                           : slot === 2
-                          ? { ...prev, slot2: value }
-                          : { ...prev, slot3: value },
+                          ? { ...prev, slot2: next }
+                          : { ...prev, slot3: next },
                       );
-                    }}
-                  />
-                  <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                    };
+
+                    return (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="relative">
+                          <Input
+                            type="date"
+                            className="h-10 text-sm pr-10"
+                            min={meetingInputMin.split("T")[0]}
+                            max={meetingInputMax.split("T")[0]}
+                            value={parts.date}
+                            onChange={(e) => {
+                              const nextDate = e.target.value;
+                              const next = combineSlotParts(nextDate, parts.time || "00:00");
+                              setSlotValue(next);
+                            }}
+                          />
+                          <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                        </div>
+
+                        <Select
+                          value={parts.time}
+                          onValueChange={(nextTime) => {
+                            const next = combineSlotParts(parts.date, nextTime);
+                            setSlotValue(next);
+                          }}
+                        >
+                          <SelectTrigger className="h-10 text-sm">
+                            <SelectValue placeholder="Time" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {timeOptions.map((t) => (
+                              <SelectItem
+                                key={t}
+                                value={t}
+                                disabled={
+                                  isTimeDisabledForDate(parts.date, t) ||
+                                  otherSlotValues.includes(combineSlotParts(parts.date, t))
+                                }
+                              >
+                                {t}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             ))}

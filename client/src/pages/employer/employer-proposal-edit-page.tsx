@@ -95,10 +95,12 @@ export default function EmployerProposalEditPage() {
   })();
 
   const proposalTotalPrice = (() => {
-    const monthly = Number(proposalMonthlyAmount || "0");
-    if (!monthly || monthly <= 0) return "";
+    const raw = String(proposalMonthlyAmount ?? "").trim();
+    if (raw.length === 0) return "";
+    const monthly = Number(raw);
+    if (!Number.isFinite(monthly) || monthly < 0) return "";
     const total = monthly * proposalMonths;
-    if (!Number.isFinite(total) || total <= 0) return "";
+    if (!Number.isFinite(total) || total < 0) return "";
     return String(total);
   })();
 

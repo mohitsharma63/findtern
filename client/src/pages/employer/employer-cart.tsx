@@ -91,6 +91,8 @@ interface CartCandidate {
 export default function EmployerCartPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const auth = getEmployerAuth();
+  const employerId = auth?.id as string | undefined;
   
   const [cartItems, setCartItems] = useState<CartCandidate[]>([]);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -119,6 +121,7 @@ export default function EmployerCartPage() {
   const [proposalMonthlyHours, setProposalMonthlyHours] = useState("160");
   const [proposalMonthlyAmount, setProposalMonthlyAmount] = useState("");
   const [isSendingProposal, setIsSendingProposal] = useState(false);
+  const [latestInterviewByInternId, setLatestInterviewByInternId] = useState<Record<string, any>>({});
 
   function pad2(n: number) {
     return String(n).padStart(2, "0");
@@ -147,6 +150,10 @@ export default function EmployerCartPage() {
     return new Date(rounded);
   }
 
+  function addMinutes(date: Date, minutes: number) {
+    return new Date(date.getTime() + minutes * 60 * 1000);
+  }
+
   function clampDate(date: Date, min: Date, max: Date) {
     const t = date.getTime();
     if (t < min.getTime()) return new Date(min.getTime());
@@ -171,6 +178,15 @@ export default function EmployerCartPage() {
     const snapped = ceilToMinutes(parsed, 30);
     const clamped = clampDate(snapped, meetingWindowMin, meetingWindowMax);
     return formatDateTimeLocal(clamped);
+  };
+
+  const buildDefaultMeetingSlots = () => {
+    const base = meetingWindowMin;
+    return {
+      slot1: normalizeMeetingSlotValue(formatDateTimeLocal(base)),
+      slot2: normalizeMeetingSlotValue(formatDateTimeLocal(addMinutes(base, 30))),
+      slot3: normalizeMeetingSlotValue(formatDateTimeLocal(addMinutes(base, 60))),
+    };
   };
 
   const getMeetingSlotParts = (value: string) => {
@@ -203,7 +219,36 @@ export default function EmployerCartPage() {
     return t < meetingWindowMin.getTime() || t > meetingWindowMax.getTime();
   };
 
-  // Load cart dynamically from localStorage + /api/interns
+  useEffect(() => {
+    if (!employerId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/employer/${employerId}/interviews`);
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        const list = (json?.interviews ?? []) as any[];
+
+        const pickTime = (i: any) => {
+          const t = new Date(i?.updatedAt ?? i?.createdAt ?? 0).getTime();
+          return Number.isFinite(t) ? t : 0;
+        };
+
+        const map: Record<string, any> = {};
+        for (const i of list) {
+          const internId = String(i?.internId ?? "");
+          if (!internId) continue;
+          const prev = map[internId];
+          if (!prev || pickTime(i) >= pickTime(prev)) {
+            map[internId] = i;
+          }
+        }
+        setLatestInterviewByInternId(map);
+      } catch {
+        return;
+      }
+    })();
+  }, [employerId]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -344,16 +389,47 @@ export default function EmployerCartPage() {
 
   const selectedCandidates = cartItems.filter(c => selectedItems.includes(c.id));
 
+  const parseMoney = (value: string) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return 0;
+    const normalized = raw.replace(/,/g, "");
+    const match = normalized.match(/\d+(?:\.\d+)?/);
+    if (!match) return 0;
+    const num = Number(match[0]);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const selectedEstimatedMonthlyStipend = selectedCandidates.reduce((sum, c) => sum + parseMoney(c.expectedStipend), 0);
+
   const openFirstSelectedForMeeting = () => {
     if (selectedCandidates.length === 0) return;
     const candidate = selectedCandidates[0];
+    const latestInterview = latestInterviewByInternId[candidate.id];
+    if (latestInterview && (latestInterview.status === "pending" || latestInterview.status === "scheduled")) {
+      toast({
+        title: "Interview already in progress",
+        description: "You already sent interview slots for this intern. Please wait for the intern to select a slot.",
+        variant: "destructive",
+      });
+      return;
+    }
     setActiveCandidate(candidate);
+    setMeetingSlots(buildDefaultMeetingSlots());
     setIsMeetingDialogOpen(true);
   };
 
   const openFirstSelectedForProposal = () => {
     if (selectedCandidates.length === 0) return;
     const candidate = selectedCandidates[0];
+    const latestInterview = latestInterviewByInternId[candidate.id];
+    if (latestInterview && latestInterview.status === "pending") {
+      toast({
+        title: "Interview confirmation pending",
+        description: "You can send a proposal after the intern selects a meeting slot.",
+        variant: "destructive",
+      });
+      return;
+    }
     setActiveCandidate(candidate);
     setIsProposalDialogOpen(true);
   };
@@ -372,10 +448,12 @@ export default function EmployerCartPage() {
   })();
 
   const proposalTotalPrice = (() => {
-    const monthly = Number(proposalMonthlyAmount || "0");
-    if (!monthly || monthly <= 0) return "";
+    const raw = String(proposalMonthlyAmount ?? "").trim();
+    if (raw.length === 0) return "";
+    const monthly = Number(raw);
+    if (!Number.isFinite(monthly) || monthly < 0) return "";
     const total = monthly * proposalMonths;
-    if (!Number.isFinite(total) || total <= 0) return "";
+    if (!Number.isFinite(total) || total < 0) return "";
     return String(total);
   })();
 
@@ -485,8 +563,30 @@ export default function EmployerCartPage() {
                             type="button"
                             variant="ghost"
                             size="sm"
+                            disabled={(() => {
+                              const latestInterview = latestInterviewByInternId[candidate.id];
+                              return Boolean(
+                                latestInterview &&
+                                  (latestInterview.status === "pending" || latestInterview.status === "scheduled"),
+                              );
+                            })()}
                             onClick={() => {
+                              const latestInterview = latestInterviewByInternId[candidate.id];
+                              const meetingBlocked = Boolean(
+                                latestInterview &&
+                                  (latestInterview.status === "pending" || latestInterview.status === "scheduled"),
+                              );
+                              if (meetingBlocked) {
+                                toast({
+                                  title: "Interview already in progress",
+                                  description:
+                                    "You already sent interview slots for this intern. Please wait for the intern to select a slot.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
                               setActiveCandidate(candidate);
+                              setMeetingSlots(buildDefaultMeetingSlots());
                               setIsMeetingDialogOpen(true);
                             }}
                             className="h-9 px-3 rounded-full bg-emerald-900 text-white hover:bg-emerald-800 shadow-sm flex items-center gap-2"
@@ -498,7 +598,21 @@ export default function EmployerCartPage() {
                             type="button"
                             variant="ghost"
                             size="sm"
+                            disabled={(() => {
+                              const latestInterview = latestInterviewByInternId[candidate.id];
+                              return Boolean(latestInterview && latestInterview.status === "pending");
+                            })()}
                             onClick={() => {
+                              const latestInterview = latestInterviewByInternId[candidate.id];
+                              const proposalBlocked = Boolean(latestInterview && latestInterview.status === "pending");
+                              if (proposalBlocked) {
+                                toast({
+                                  title: "Interview confirmation pending",
+                                  description: "You can send a proposal after the intern selects a meeting slot.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
                               setActiveCandidate(candidate);
                               setIsProposalDialogOpen(true);
                             }}
@@ -566,6 +680,12 @@ export default function EmployerCartPage() {
                     <span className="text-slate-600">Total in Cart</span>
                     <span className="text-slate-800">{cartItems.length}</span>
                   </div>
+                  {selectedEstimatedMonthlyStipend > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">Estimated Monthly Stipend (selected)</span>
+                      <span className="font-semibold text-slate-800">₹{selectedEstimatedMonthlyStipend}</span>
+                    </div>
+                  )}
                   <Separator />
                   
                   {/* Selected Candidates Preview - names removed, counts are already shown above */}
@@ -625,7 +745,9 @@ export default function EmployerCartPage() {
       {/* Book Meeting Dialog */}
       <Dialog open={isMeetingDialogOpen} onOpenChange={(open) => {
         setIsMeetingDialogOpen(open);
-        if (!open) {
+        if (open) {
+          setMeetingSlots(buildDefaultMeetingSlots());
+        } else {
           setActiveCandidate(null);
           setMeetingSlots({ slot1: "", slot2: "", slot3: "" });
         }
@@ -656,6 +778,10 @@ export default function EmployerCartPage() {
                         ? meetingSlots.slot2
                         : meetingSlots.slot3;
                     const parts = getMeetingSlotParts(slotValue);
+
+                    const otherSlotValues = [meetingSlots.slot1, meetingSlots.slot2, meetingSlots.slot3].filter(
+                      (v) => v && v !== slotValue,
+                    );
 
                     const setSlotValue = (next: string) => {
                       setMeetingSlots((prev) =>
@@ -700,7 +826,10 @@ export default function EmployerCartPage() {
                               <SelectItem
                                 key={t}
                                 value={t}
-                                disabled={isTimeDisabledForDate(parts.date, t)}
+                                disabled={
+                                  isTimeDisabledForDate(parts.date, t) ||
+                                  otherSlotValues.includes(combineMeetingSlotParts(parts.date, t))
+                                }
                               >
                                 {t}
                               </SelectItem>
@@ -733,6 +862,15 @@ export default function EmployerCartPage() {
                   toast({
                     title: "Add all 3 slots",
                     description: "Please select all three meeting slots before sending.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                if (new Set([meetingSlots.slot1, meetingSlots.slot2, meetingSlots.slot3]).size !== 3) {
+                  toast({
+                    title: "Choose different time slots",
+                    description: "All 3 meeting slots must be different.",
                     variant: "destructive",
                   });
                   return;
@@ -794,6 +932,7 @@ export default function EmployerCartPage() {
                   }
 
                   const json = await res.json().catch(() => null);
+                  const createdInterview = json?.interview;
                   const meet = json?.meet as
                     | {
                         created?: boolean;
@@ -801,6 +940,13 @@ export default function EmployerCartPage() {
                         connectUrl?: string | null;
                       }
                     | undefined;
+
+                  if (createdInterview) {
+                    setLatestInterviewByInternId((prev) => ({
+                      ...prev,
+                      [activeCandidate.id]: createdInterview,
+                    }));
+                  }
 
                   toast({
                     title: "Slots sent",
@@ -1127,7 +1273,6 @@ export default function EmployerCartPage() {
                 <Input
                   type="number"
                   className="h-9 text-sm bg-slate-50"
-                  placeholder="5000"
                   value={proposalTotalPrice}
                   readOnly
                 />

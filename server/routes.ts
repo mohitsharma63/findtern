@@ -940,6 +940,19 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Intern not found" });
       }
 
+      const latestExisting = await storage.getLatestInterviewForEmployerInternProject(
+        employerId,
+        data.internId,
+        data.projectId ?? null,
+      );
+
+      if (latestExisting && (latestExisting.status === "pending" || latestExisting.status === "scheduled")) {
+        return res.status(409).json({
+          message: "An interview is already pending for this intern",
+          interview: serializeInterview(latestExisting),
+        });
+      }
+
       const parsedSlots = data.slots.map((s) => new Date(s));
       if (parsedSlots.some((d) => Number.isNaN(d.getTime()))) {
         return res.status(400).json({ message: "One or more slots are invalid" });
@@ -1542,6 +1555,19 @@ app.get("/api/employer/:employerId/interviews", async (req, res) => {
         return res
           .status(400)
           .json({ message: "Project does not belong to this employer" });
+      }
+
+      const latestInterview = await storage.getLatestInterviewForEmployerInternProject(
+        employerId,
+        data.internId,
+        data.projectId,
+      );
+
+      if (latestInterview && latestInterview.status === "pending") {
+        return res.status(409).json({
+          message: "Cannot send a proposal while interview confirmation is pending",
+          interview: serializeInterview(latestInterview),
+        });
       }
 
       const proposal = await storage.createProposal({

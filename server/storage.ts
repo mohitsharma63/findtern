@@ -27,7 +27,7 @@ import {
   interviews,
   employerGoogleTokens,
 } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -91,6 +91,11 @@ export interface IStorage {
 
   // Interviews
   createInterview(data: InsertInterview): Promise<Interview>;
+  getLatestInterviewForEmployerInternProject(
+    employerId: string,
+    internId: string,
+    projectId?: string | null,
+  ): Promise<Interview | undefined>;
   getInterviewsByInternId(internId: string): Promise<Interview[]>;
   getInterviewsByEmployerId(employerId: string): Promise<Interview[]>;
   updateInterviewSelectedSlot(id: string, selectedSlot: number): Promise<Interview | undefined>;
@@ -382,6 +387,29 @@ export class PostgresStorage implements IStorage {
         updatedAt: new Date(),
       } as any)
       .returning();
+    return interview;
+  }
+
+  async getLatestInterviewForEmployerInternProject(
+    employerId: string,
+    internId: string,
+    projectId?: string | null,
+  ): Promise<Interview | undefined> {
+    const conditions = [eq(interviews.employerId, employerId), eq(interviews.internId, internId)];
+    if (projectId !== undefined) {
+      if (projectId === null) {
+        conditions.push(isNull(interviews.projectId));
+      } else {
+        conditions.push(eq(interviews.projectId, projectId));
+      }
+    }
+
+    const [interview] = await db
+      .select()
+      .from(interviews)
+      .where(and(...conditions))
+      .orderBy(desc(interviews.createdAt))
+      .limit(1);
     return interview;
   }
 
