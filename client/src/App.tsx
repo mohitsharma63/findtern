@@ -48,6 +48,7 @@ import AdminUsersPage from "@/pages/admin/admin-users";
 import AdminInternDetailPage from "@/pages/admin/admin-intern-detail";
 import AdminCompanyDetailPage from "@/pages/admin/admin-company-detail";
 import AdminTransactionsPage from "@/pages/admin/admin-transactions";
+import AdminWebsitePage from "@/pages/admin/admin-website";
 
 // Employer pages
 import EmployerSignupPage from "@/pages/employer/employer-signup";
@@ -341,6 +342,7 @@ function Router() {
       <Route path="/admin" component={AdminIndexRedirect} />
       <Route path="/admin/login" component={AdminLoginPage} />
       <Route path="/admin/dashboard" component={AdminDashboardPage} />
+      <Route path="/admin/website" component={AdminWebsitePage} />
       <Route path="/admin/users" component={AdminUsersPage} />
       <Route path="/admin/skills" component={AdminSkillsPage} />
       <Route path="/admin/interns" component={AdminInternsPage} />

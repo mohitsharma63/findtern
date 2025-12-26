@@ -36,7 +36,7 @@ import {
   Share2,
   Bookmark,
 } from "lucide-react";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 
 export default function OpportunitiesPage() {
   const [, setLocation] = useLocation();

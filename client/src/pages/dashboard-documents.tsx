@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 import { ArrowLeft, FileText, Image as ImageIcon, Video } from "lucide-react";
 
 type MediaKey = "profilePhoto" | "introVideo" | "aadhaarImage" | "panImage";

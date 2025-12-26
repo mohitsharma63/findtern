@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 
  type EmployerProposal = {
   id: string;

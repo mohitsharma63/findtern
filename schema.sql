@@ -182,3 +182,85 @@ CREATE TABLE IF NOT EXISTS interviews (
 
 ALTER TABLE interviews
   ADD COLUMN IF NOT EXISTS calendar_event_id text;
+
+-- --------------------------------------------------
+-- Website CMS
+-- --------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS website_slider (
+  id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  title text NOT NULL,
+  subtitle text,
+  image_url text,
+  cta_text text,
+  cta_href text,
+  sort_order integer NOT NULL DEFAULT 0,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp DEFAULT now(),
+  updated_at timestamp DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS website_blog_posts (
+  id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug text NOT NULL UNIQUE,
+  title text NOT NULL,
+  excerpt text,
+  cover_image_url text,
+  banner_image_url text,
+  body text NOT NULL,
+  status text NOT NULL DEFAULT 'draft',
+  published_at timestamp,
+  created_at timestamp DEFAULT now(),
+  updated_at timestamp DEFAULT now()
+);
+
+ALTER TABLE website_blog_posts
+  ADD COLUMN IF NOT EXISTS banner_image_url text;
+
+CREATE TABLE IF NOT EXISTS website_featured_skills (
+  id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  title text NOT NULL,
+  icon_class text,
+  meta_text text,
+  href text,
+  sort_order integer NOT NULL DEFAULT 0,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp DEFAULT now(),
+  updated_at timestamp DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS website_happy_faces (
+  id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  quote text NOT NULL,
+  title text NOT NULL,
+  name text NOT NULL,
+  company text NOT NULL,
+  avatar_url text,
+  sort_order integer NOT NULL DEFAULT 0,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp DEFAULT now(),
+  updated_at timestamp DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS website_plans (
+  id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  price_text text,
+  subtitle text,
+  features jsonb DEFAULT '[]'::jsonb,
+  sort_order integer NOT NULL DEFAULT 0,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp DEFAULT now(),
+  updated_at timestamp DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS website_faqs (
+  id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  category text NOT NULL,
+  question text NOT NULL,
+  answer text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp DEFAULT now(),
+  updated_at timestamp DEFAULT now()
+);

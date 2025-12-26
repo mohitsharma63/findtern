@@ -41,7 +41,7 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
   const isActive = (key: EmployerHeaderActive) => active === key;
 
   const primaryClasses =
-    "h-11 rounded-none flex flex-col items-center justify-center gap-0.5 border-b-2 border-x-0 border-t-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none";
+    "h-11 rounded-none flex flex-col items-center justify-center gap-0.5 relative border-0 no-default-hover-elevate no-default-active-elevate focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none after:content-[''] after:absolute after:bottom-0 after:translate-y-1 after:left-1.5 after:right-1.5 after:h-[2px] after:rounded-full";
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white/90 backdrop-blur-lg">
@@ -62,8 +62,8 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
                 size="icon"
                 className={`${primaryClasses} w-14 ${
                   isActive("dashboard")
-                    ? "border-emerald-600 text-emerald-700"
-                    : "border-transparent text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
+                    ? "after:bg-emerald-600 text-emerald-700"
+                    : "after:bg-transparent text-slate-600 hover:after:bg-emerald-200 hover:text-emerald-700"
                 }`}
                 onClick={() => setLocation("/employer/dashboard")}
               >
@@ -81,8 +81,8 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
                 size="icon"
                 className={`${primaryClasses} w-16 ${
                   isActive("proposals")
-                    ? "border-emerald-600 text-emerald-700"
-                    : "border-transparent text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
+                    ? "after:bg-emerald-600 text-emerald-700"
+                    : "after:bg-transparent text-slate-600 hover:after:bg-emerald-200 hover:text-emerald-700"
                 }`}
                 onClick={() => setLocation("/employer/proposals")}
               >
@@ -100,8 +100,8 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
                 size="icon"
                 className={`${primaryClasses} w-16 ${
                   isActive("schedule")
-                    ? "border-emerald-600 text-emerald-700"
-                    : "border-transparent text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
+                    ? "after:bg-emerald-600 text-emerald-700"
+                    : "after:bg-transparent text-slate-600 hover:after:bg-emerald-200 hover:text-emerald-700"
                 }`}
                 onClick={() => setLocation("/employer/shedule")}
               >
@@ -119,9 +119,9 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
                 size="icon"
                 className={`${primaryClasses} w-14 ${
                   isActive("cart")
-                    ? "border-emerald-600 text-emerald-700"
-                    : "border-transparent text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
-                } relative`}
+                    ? "after:bg-emerald-600 text-emerald-700"
+                    : "after:bg-transparent text-slate-600 hover:after:bg-emerald-200 hover:text-emerald-700"
+                }`}
                 onClick={() => setLocation("/employer/cart")}
               >
                 <ShoppingCart className="w-4 h-4" />
@@ -138,8 +138,8 @@ export function EmployerHeader({ active }: EmployerHeaderProps) {
                 size="icon"
                 className={`${primaryClasses} w-14 ${
                   isActive("alerts")
-                    ? "border-emerald-600 text-emerald-700"
-                    : "border-transparent text-slate-600 hover:border-emerald-200 hover:text-emerald-700"
+                    ? "after:bg-emerald-600 text-emerald-700"
+                    : "after:bg-transparent text-slate-600 hover:after:bg-emerald-200 hover:text-emerald-700"
                 }`}
               >
                 <Bell className="w-4 h-4" />

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
 import { ArrowLeft, Users, Sparkles, Star, MapPin, ShoppingCart, ExternalLink } from "lucide-react";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 import { apiRequest } from "@/lib/queryClient";
 
 type AiRatings = {

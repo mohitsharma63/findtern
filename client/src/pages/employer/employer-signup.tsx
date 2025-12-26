@@ -27,7 +27,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 import { saveEmployerAuth } from "@/lib/employerAuth";
 
 function PasswordStrengthIndicator({ password }: { password: string }) {

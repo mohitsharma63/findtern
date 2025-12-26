@@ -10,26 +10,31 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 import {
-  BarChart3,
-  Building2,
+  Globe,
   FolderKanban,
   LayoutDashboard,
-  UserCircle2,
+  Newspaper,
   LogOut,
   Settings,
   Sparkles,
   Users,
   Receipt,
+  ChevronDown,
 } from "lucide-react";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
-import { ReactNode } from "react";
+import findternLogo from "@assets/logo.jpg";
+import React, { ReactNode } from "react";
 
 type AdminLayoutProps = {
   title: string;
@@ -45,18 +50,74 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/admin/dashboard" },
-  { label: "Users", icon: UserCircle2, href: "/admin/users" },
-  { label: "Skills", icon: Sparkles, href: "/admin/skills" },
-  { label: "Interns", icon: Users, href: "/admin/interns" },
-  { label: "Companies", icon: Building2, href: "/admin/companies" },
-  { label: "Projects", icon: FolderKanban, href: "/admin/projects" },
-  { label: "Transactions", icon: Receipt, href: "/admin/transactions" },
-  { label: "Analytics", icon: BarChart3, href: "/admin/reports" },
   { label: "Settings", icon: Settings, href: "/admin/settings" },
+];
+
+const cmsItems: NavItem[] = [
+  { label: "Slider", icon: Globe, href: "/admin/website?tab=slider" },
+  { label: "Blogs", icon: Newspaper, href: "/admin/website?tab=blogs" },
+  { label: "Featured Skills", icon: Sparkles, href: "/admin/website?tab=skills" },
+  { label: "Happy Faces", icon: Users, href: "/admin/website?tab=faces" },
+  { label: "Plans", icon: Receipt, href: "/admin/website?tab=plans" },
+  { label: "FAQ", icon: FolderKanban, href: "/admin/website?tab=faq" },
 ];
 
 export function AdminLayout({ title, description, children }: AdminLayoutProps) {
   const [location, setLocation] = useLocation();
+
+  const isCmsRoute = location.startsWith("/admin/website");
+  const [cmsOpen, setCmsOpen] = React.useState<boolean>(isCmsRoute);
+
+  const [urlSearch, setUrlSearch] = React.useState(() => {
+    if (typeof window === "undefined") return "";
+    return window.location.search;
+  });
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onUrlChange = () => setUrlSearch(window.location.search);
+
+    const w = window as any;
+    if (!w.__findternHistoryPatched) {
+      w.__findternHistoryPatched = true;
+      const origPushState = history.pushState.bind(history);
+      const origReplaceState = history.replaceState.bind(history);
+
+      history.pushState = ((...args: Parameters<History["pushState"]>) => {
+        const ret = origPushState(...args);
+        window.dispatchEvent(new Event("locationchange"));
+        return ret;
+      }) as History["pushState"];
+
+      history.replaceState = ((...args: Parameters<History["replaceState"]>) => {
+        const ret = origReplaceState(...args);
+        window.dispatchEvent(new Event("locationchange"));
+        return ret;
+      }) as History["replaceState"];
+    }
+
+    window.addEventListener("popstate", onUrlChange);
+    window.addEventListener("hashchange", onUrlChange);
+    window.addEventListener("locationchange", onUrlChange as any);
+    onUrlChange();
+
+    return () => {
+      window.removeEventListener("popstate", onUrlChange);
+      window.removeEventListener("hashchange", onUrlChange);
+      window.removeEventListener("locationchange", onUrlChange as any);
+    };
+  }, []);
+
+  const activeCmsTab = React.useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(urlSearch);
+    return params.get("tab");
+  }, [urlSearch]);
+
+  React.useEffect(() => {
+    if (isCmsRoute) setCmsOpen(true);
+  }, [isCmsRoute]);
 
   const handleLogout = () => {
     setLocation("/admin/login");
@@ -88,7 +149,7 @@ export function AdminLayout({ title, description, children }: AdminLayoutProps) 
               <SidebarMenu className="space-y-1">
                 {navItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = location.startsWith(item.href);
+                  const isActive = location === item.href || location.startsWith(item.href.split("?")[0]);
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
@@ -116,6 +177,74 @@ export function AdminLayout({ title, description, children }: AdminLayoutProps) 
                     </SidebarMenuItem>
                   );
                 })}
+
+                <Collapsible open={cmsOpen} onOpenChange={setCmsOpen}>
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        isActive={isCmsRoute}
+                        className={`text-[13px] font-medium transition-all duration-150
+                          ${
+                            isCmsRoute
+                              ? "bg-emerald-50 text-emerald-900 shadow-sm"
+                              : "text-slate-600 hover:bg-emerald-50 hover:text-emerald-900"
+                          }`}
+                      >
+                        <div
+                          className={`flex h-6 w-6 items-center justify-center rounded-md border text-[13px]
+                            ${
+                              isCmsRoute
+                                ? "border-emerald-500 bg-emerald-100 text-emerald-900"
+                                : "border-slate-200 bg-slate-50 text-slate-500"
+                            }`}
+                        >
+                          <Globe className="h-3.5 w-3.5" />
+                        </div>
+                        <span>Website CMS</span>
+                        <ChevronDown className={cn("ml-auto h-4 w-4 transition-transform", cmsOpen ? "rotate-180" : "")} />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {cmsItems.map((sub) => {
+                          const expectedTab = new URLSearchParams(sub.href.split("?")[1] ?? "").get("tab");
+                          const isActive = isCmsRoute && expectedTab != null && activeCmsTab === expectedTab;
+                          const Icon = sub.icon;
+                          return (
+                            <SidebarMenuSubItem key={sub.href}>
+                              <SidebarMenuSubButton
+                                href={sub.href}
+                                isActive={isActive}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setLocation(sub.href);
+                                }}
+                                className={cn(
+                                  "gap-2 text-[13px]",
+                                  isActive
+                                    ? "bg-emerald-50 text-emerald-900"
+                                    : "text-slate-600 hover:bg-emerald-50 hover:text-emerald-900"
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "flex h-6 w-6 items-center justify-center rounded-md border",
+                                    isActive
+                                      ? "border-emerald-500 bg-emerald-100 text-emerald-900"
+                                      : "border-slate-200 bg-white text-slate-500"
+                                  )}
+                                >
+                                  <Icon className="h-3.5 w-3.5" />
+                                </span>
+                                <span className="truncate">{sub.label}</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

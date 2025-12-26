@@ -159,6 +159,103 @@ export type InsertAdmin = z.infer<typeof insertAdminSchema>;
 export type Admin = typeof admins.$inferSelect;
 
 // --------------------------------------------------
+// Website CMS
+// --------------------------------------------------
+
+export const websiteSlider = pgTable("website_slider", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  subtitle: text("subtitle"),
+  imageUrl: text("image_url"),
+  ctaText: text("cta_text"),
+  ctaHref: text("cta_href"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WebsiteSliderItem = typeof websiteSlider.$inferSelect;
+export type InsertWebsiteSliderItem = typeof websiteSlider.$inferInsert;
+
+export const websiteBlogPosts = pgTable("website_blog_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  excerpt: text("excerpt"),
+  coverImageUrl: text("cover_image_url"),
+  bannerImageUrl: text("banner_image_url"),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("draft"),
+  publishedAt: timestamp("published_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WebsiteBlogPost = typeof websiteBlogPosts.$inferSelect;
+export type InsertWebsiteBlogPost = typeof websiteBlogPosts.$inferInsert;
+
+export const websiteFeaturedSkills = pgTable("website_featured_skills", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  iconClass: text("icon_class"),
+  metaText: text("meta_text"),
+  href: text("href"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WebsiteFeaturedSkill = typeof websiteFeaturedSkills.$inferSelect;
+export type InsertWebsiteFeaturedSkill = typeof websiteFeaturedSkills.$inferInsert;
+
+export const websiteHappyFaces = pgTable("website_happy_faces", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  quote: text("quote").notNull(),
+  title: text("title").notNull(),
+  name: text("name").notNull(),
+  company: text("company").notNull(),
+  avatarUrl: text("avatar_url"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WebsiteHappyFace = typeof websiteHappyFaces.$inferSelect;
+export type InsertWebsiteHappyFace = typeof websiteHappyFaces.$inferInsert;
+
+export const websitePlans = pgTable("website_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  priceText: text("price_text"),
+  subtitle: text("subtitle"),
+  features: jsonb("features").$type<string[]>().default([]),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WebsitePlan = typeof websitePlans.$inferSelect;
+export type InsertWebsitePlan = typeof websitePlans.$inferInsert;
+
+export const websiteFaqs = pgTable("website_faqs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  category: text("category").notNull(),
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WebsiteFaq = typeof websiteFaqs.$inferSelect;
+export type InsertWebsiteFaq = typeof websiteFaqs.$inferInsert;
+
+// --------------------------------------------------
 // Google OAuth Tokens (Employer Calendar / Meet)
 // --------------------------------------------------
 export const employerGoogleTokens = pgTable("employer_google_tokens", {

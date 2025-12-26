@@ -23,7 +23,7 @@ import Cropper from "react-easy-crop";
 import * as faceapi from "face-api.js";
 import { countryCodes } from "@shared/schema";
 import cityStatePincode from "@/data/cityStatePincode.json";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 
 const steps = [
   "About Me",

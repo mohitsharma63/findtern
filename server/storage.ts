@@ -6,6 +6,18 @@ import {
   type Employer,
   type InsertEmployer,
   type Admin,
+  type WebsiteSliderItem,
+  type InsertWebsiteSliderItem,
+  type WebsiteBlogPost,
+  type InsertWebsiteBlogPost,
+  type WebsiteFeaturedSkill,
+  type InsertWebsiteFeaturedSkill,
+  type WebsiteHappyFace,
+  type InsertWebsiteHappyFace,
+  type WebsitePlan,
+  type InsertWebsitePlan,
+  type WebsiteFaq,
+  type InsertWebsiteFaq,
   type EmployerGoogleToken,
   type InternDocuments,
   type InsertInternDocuments,
@@ -20,6 +32,12 @@ import {
   users,
   employers,
   admins,
+  websiteSlider,
+  websiteBlogPosts,
+  websiteFeaturedSkills,
+  websiteHappyFaces,
+  websitePlans,
+  websiteFaqs,
   internOnboarding,
   internDocuments,
   projects,
@@ -27,7 +45,7 @@ import {
   interviews,
   employerGoogleTokens,
 } from "@shared/schema";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { eq, desc, and, isNull, asc } from "drizzle-orm";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -43,6 +61,55 @@ export interface IStorage {
   getUsers(): Promise<User[]>;
   updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
   deleteUser(id: string): Promise<void>;
+
+  // Website CMS
+  listWebsiteSlider(): Promise<WebsiteSliderItem[]>;
+  createWebsiteSliderItem(data: InsertWebsiteSliderItem): Promise<WebsiteSliderItem>;
+  updateWebsiteSliderItem(
+    id: string,
+    data: Partial<InsertWebsiteSliderItem>,
+  ): Promise<WebsiteSliderItem | undefined>;
+  deleteWebsiteSliderItem(id: string): Promise<void>;
+
+  listWebsiteBlogPosts(): Promise<WebsiteBlogPost[]>;
+  createWebsiteBlogPost(data: InsertWebsiteBlogPost): Promise<WebsiteBlogPost>;
+  updateWebsiteBlogPost(
+    id: string,
+    data: Partial<InsertWebsiteBlogPost>,
+  ): Promise<WebsiteBlogPost | undefined>;
+  deleteWebsiteBlogPost(id: string): Promise<void>;
+
+  listWebsiteFeaturedSkills(): Promise<WebsiteFeaturedSkill[]>;
+  createWebsiteFeaturedSkill(data: InsertWebsiteFeaturedSkill): Promise<WebsiteFeaturedSkill>;
+  updateWebsiteFeaturedSkill(
+    id: string,
+    data: Partial<InsertWebsiteFeaturedSkill>,
+  ): Promise<WebsiteFeaturedSkill | undefined>;
+  deleteWebsiteFeaturedSkill(id: string): Promise<void>;
+
+  listWebsiteHappyFaces(): Promise<WebsiteHappyFace[]>;
+  createWebsiteHappyFace(data: InsertWebsiteHappyFace): Promise<WebsiteHappyFace>;
+  updateWebsiteHappyFace(
+    id: string,
+    data: Partial<InsertWebsiteHappyFace>,
+  ): Promise<WebsiteHappyFace | undefined>;
+  deleteWebsiteHappyFace(id: string): Promise<void>;
+
+  listWebsitePlans(): Promise<WebsitePlan[]>;
+  createWebsitePlan(data: InsertWebsitePlan): Promise<WebsitePlan>;
+  updateWebsitePlan(
+    id: string,
+    data: Partial<InsertWebsitePlan>,
+  ): Promise<WebsitePlan | undefined>;
+  deleteWebsitePlan(id: string): Promise<void>;
+
+  listWebsiteFaqs(): Promise<WebsiteFaq[]>;
+  createWebsiteFaq(data: InsertWebsiteFaq): Promise<WebsiteFaq>;
+  updateWebsiteFaq(
+    id: string,
+    data: Partial<InsertWebsiteFaq>,
+  ): Promise<WebsiteFaq | undefined>;
+  deleteWebsiteFaq(id: string): Promise<void>;
 
   // Employers
   getEmployer(id: string): Promise<Employer | undefined>;
@@ -243,6 +310,246 @@ export class PostgresStorage implements IStorage {
       .from(admins)
       .where(eq(admins.email, email));
     return admin;
+  }
+
+  // Website CMS
+  async listWebsiteSlider(): Promise<WebsiteSliderItem[]> {
+    return db
+      .select()
+      .from(websiteSlider)
+      .orderBy(asc(websiteSlider.sortOrder), desc(websiteSlider.createdAt));
+  }
+
+  async createWebsiteSliderItem(data: InsertWebsiteSliderItem): Promise<WebsiteSliderItem> {
+    const [row] = await db
+      .insert(websiteSlider)
+      .values({
+        ...(data as any),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return row;
+  }
+
+  async updateWebsiteSliderItem(
+    id: string,
+    data: Partial<InsertWebsiteSliderItem>,
+  ): Promise<WebsiteSliderItem | undefined> {
+    const [row] = await db
+      .update(websiteSlider)
+      .set({
+        ...(data as any),
+        updatedAt: new Date(),
+      })
+      .where(eq(websiteSlider.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteWebsiteSliderItem(id: string): Promise<void> {
+    await db.delete(websiteSlider).where(eq(websiteSlider.id, id));
+  }
+
+  async listWebsiteBlogPosts(): Promise<WebsiteBlogPost[]> {
+    return db
+      .select()
+      .from(websiteBlogPosts)
+      .orderBy(desc(websiteBlogPosts.createdAt));
+  }
+
+  async createWebsiteBlogPost(data: InsertWebsiteBlogPost): Promise<WebsiteBlogPost> {
+    const next: any = {
+      ...(data as any),
+      updatedAt: new Date(),
+    };
+
+    if (next.status === "published" && next.publishedAt == null) {
+      next.publishedAt = new Date();
+    }
+
+    const [row] = await db.insert(websiteBlogPosts).values(next).returning();
+    return row;
+  }
+
+  async updateWebsiteBlogPost(
+    id: string,
+    data: Partial<InsertWebsiteBlogPost>,
+  ): Promise<WebsiteBlogPost | undefined> {
+    const next: any = {
+      ...(data as any),
+      updatedAt: new Date(),
+    };
+
+    if (data.status !== undefined) {
+      if (data.status === "published") {
+        if (data.publishedAt === undefined) {
+          next.publishedAt = new Date();
+        }
+      } else {
+        next.publishedAt = null;
+      }
+    }
+
+    const [row] = await db
+      .update(websiteBlogPosts)
+      .set(next)
+      .where(eq(websiteBlogPosts.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteWebsiteBlogPost(id: string): Promise<void> {
+    await db.delete(websiteBlogPosts).where(eq(websiteBlogPosts.id, id));
+  }
+
+  async listWebsiteFeaturedSkills(): Promise<WebsiteFeaturedSkill[]> {
+    return db
+      .select()
+      .from(websiteFeaturedSkills)
+      .orderBy(asc(websiteFeaturedSkills.sortOrder), desc(websiteFeaturedSkills.createdAt));
+  }
+
+  async createWebsiteFeaturedSkill(
+    data: InsertWebsiteFeaturedSkill,
+  ): Promise<WebsiteFeaturedSkill> {
+    const [row] = await db
+      .insert(websiteFeaturedSkills)
+      .values({
+        ...(data as any),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return row;
+  }
+
+  async updateWebsiteFeaturedSkill(
+    id: string,
+    data: Partial<InsertWebsiteFeaturedSkill>,
+  ): Promise<WebsiteFeaturedSkill | undefined> {
+    const [row] = await db
+      .update(websiteFeaturedSkills)
+      .set({
+        ...(data as any),
+        updatedAt: new Date(),
+      })
+      .where(eq(websiteFeaturedSkills.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteWebsiteFeaturedSkill(id: string): Promise<void> {
+    await db.delete(websiteFeaturedSkills).where(eq(websiteFeaturedSkills.id, id));
+  }
+
+  async listWebsiteHappyFaces(): Promise<WebsiteHappyFace[]> {
+    return db
+      .select()
+      .from(websiteHappyFaces)
+      .orderBy(asc(websiteHappyFaces.sortOrder), desc(websiteHappyFaces.createdAt));
+  }
+
+  async createWebsiteHappyFace(data: InsertWebsiteHappyFace): Promise<WebsiteHappyFace> {
+    const [row] = await db
+      .insert(websiteHappyFaces)
+      .values({
+        ...(data as any),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return row;
+  }
+
+  async updateWebsiteHappyFace(
+    id: string,
+    data: Partial<InsertWebsiteHappyFace>,
+  ): Promise<WebsiteHappyFace | undefined> {
+    const [row] = await db
+      .update(websiteHappyFaces)
+      .set({
+        ...(data as any),
+        updatedAt: new Date(),
+      })
+      .where(eq(websiteHappyFaces.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteWebsiteHappyFace(id: string): Promise<void> {
+    await db.delete(websiteHappyFaces).where(eq(websiteHappyFaces.id, id));
+  }
+
+  async listWebsitePlans(): Promise<WebsitePlan[]> {
+    return db
+      .select()
+      .from(websitePlans)
+      .orderBy(asc(websitePlans.sortOrder), desc(websitePlans.createdAt));
+  }
+
+  async createWebsitePlan(data: InsertWebsitePlan): Promise<WebsitePlan> {
+    const [row] = await db
+      .insert(websitePlans)
+      .values({
+        ...(data as any),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return row;
+  }
+
+  async updateWebsitePlan(
+    id: string,
+    data: Partial<InsertWebsitePlan>,
+  ): Promise<WebsitePlan | undefined> {
+    const [row] = await db
+      .update(websitePlans)
+      .set({
+        ...(data as any),
+        updatedAt: new Date(),
+      })
+      .where(eq(websitePlans.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteWebsitePlan(id: string): Promise<void> {
+    await db.delete(websitePlans).where(eq(websitePlans.id, id));
+  }
+
+  async listWebsiteFaqs(): Promise<WebsiteFaq[]> {
+    return db
+      .select()
+      .from(websiteFaqs)
+      .orderBy(asc(websiteFaqs.sortOrder), desc(websiteFaqs.createdAt));
+  }
+
+  async createWebsiteFaq(data: InsertWebsiteFaq): Promise<WebsiteFaq> {
+    const [row] = await db
+      .insert(websiteFaqs)
+      .values({
+        ...(data as any),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return row;
+  }
+
+  async updateWebsiteFaq(
+    id: string,
+    data: Partial<InsertWebsiteFaq>,
+  ): Promise<WebsiteFaq | undefined> {
+    const [row] = await db
+      .update(websiteFaqs)
+      .set({
+        ...(data as any),
+        updatedAt: new Date(),
+      })
+      .where(eq(websiteFaqs.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteWebsiteFaq(id: string): Promise<void> {
+    await db.delete(websiteFaqs).where(eq(websiteFaqs.id, id));
   }
 
   // Google OAuth Tokens (Employer Calendar / Meet)

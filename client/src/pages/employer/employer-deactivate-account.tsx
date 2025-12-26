@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { ArrowLeft, Trash2 } from "lucide-react";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 import { apiRequest } from "@/lib/queryClient";
 import { getEmployerAuth, clearEmployerAuth } from "@/lib/employerAuth";
 

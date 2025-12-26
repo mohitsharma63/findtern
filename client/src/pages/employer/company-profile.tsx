@@ -43,7 +43,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { companySizes } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 import { apiRequest } from "@/lib/queryClient";
 import { getEmployerAuth, saveEmployerAuth } from "@/lib/employerAuth";
 import { EmployerHeader } from "@/components/employer/EmployerHeader";

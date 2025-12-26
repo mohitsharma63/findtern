@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { Card } from "@/components/ui/card";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 
 export default function OnboardingLoadingPage() {
   const [, setLocation] = useLocation();

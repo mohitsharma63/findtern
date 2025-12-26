@@ -40,7 +40,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { getEmployerAuth, saveEmployerAuth } from "@/lib/employerAuth";
-import findternLogo from "@assets/IMG-20251119-WA0003_1765959112655.jpg";
+import findternLogo from "@assets/logo.jpg";
 import cityStatePincode from "@/data/cityStatePincode.json";
 
 // Company Setup Schema
